@@ -1,0 +1,100 @@
+:root {
+  --bg: #0b0d10;
+  --panel: #14181d;
+  --panel-2: #1b2128;
+  --line: #262d36;
+  --text: #e8ecf1;
+  --muted: #8b96a3;
+  --accent: #2fbf71;
+  --accent-ink: #06210f;
+  --warn: #f0b429;
+  --danger: #e5484d;
+  --info: #4c9aff;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); }
+header.top { position: sticky; top: 0; z-index: 5; background: rgba(11,13,16,.92);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+.top .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+.brand { font-weight: 800; letter-spacing: .5px; font-size: 18px; }
+.brand small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; letter-spacing: 0; }
+nav.roles { margin-left: auto; display: flex; gap: 4px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+nav.roles button { background: none; border: 0; color: var(--muted); padding: 6px 14px;
+  border-radius: 999px; cursor: pointer; font: inherit; }
+nav.roles button.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.hero { padding: 28px 0 8px; }
+.hero h1 { margin: 0 0 4px; font-size: 26px; }
+.hero p { margin: 0; color: var(--muted); font-style: italic; }
+main { padding: 16px 0 60px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.tabs button { background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  padding: 8px 14px; border-radius: 10px; cursor: pointer; font: inherit; }
+.tabs button.active { border-color: var(--accent); color: var(--accent); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 12px; font-size: 18px; }
+.card h3 { margin: 16px 0 8px; font-size: 15px; color: var(--muted); font-weight: 600; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+label { display: block; font-size: 13px; color: var(--muted); }
+input, select, textarea { width: 100%; margin-top: 4px; padding: 10px 12px; font: inherit;
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+textarea { min-height: 70px; resize: vertical; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text); cursor: pointer; font: inherit; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.sm { padding: 6px 10px; font-size: 13px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.price-box { background: var(--panel-2); border: 1px dashed var(--line); border-radius: 12px; padding: 14px; }
+.price-box .total { font-size: 26px; font-weight: 800; color: var(--accent); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+.table-scroll { overflow-x: auto; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--panel-2); border: 1px solid var(--line); white-space: nowrap; }
+.badge.ok { color: var(--accent); border-color: var(--accent); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.bad { color: var(--danger); border-color: var(--danger); }
+.badge.info { color: var(--info); border-color: var(--info); }
+.timeline { list-style: none; padding: 0; margin: 8px 0 0; }
+.timeline li { position: relative; padding: 0 0 14px 24px; color: var(--muted); }
+.timeline li::before { content: ""; position: absolute; left: 5px; top: 6px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--line); }
+.timeline li::after { content: ""; position: absolute; left: 9px; top: 18px; bottom: 0; width: 2px; background: var(--line); }
+.timeline li:last-child::after { display: none; }
+.timeline li.done { color: var(--text); }
+.timeline li.done::before { background: var(--accent); }
+.timeline li.current::before { background: var(--warn); box-shadow: 0 0 0 4px rgba(240,180,41,.2); }
+.stat { background: var(--panel-2); border-radius: 12px; padding: 14px; }
+.stat b { display: block; font-size: 22px; }
+.empty { text-align: center; color: var(--muted); padding: 24px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--accent);
+  color: var(--accent-ink); padding: 10px 18px; border-radius: 10px; font-weight: 600; z-index: 20;
+  box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius);
+  max-width: 640px; width: calc(100% - 32px); padding: 20px; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+.invoice { background: #fff; color: #111; border-radius: 10px; padding: 24px; }
+.invoice table th, .invoice table td { border-color: #ddd; color: #111; }
+.invoice .muted { color: #555; }
+.notice { font-size: 13px; color: var(--muted); border-left: 3px solid var(--warn); padding-left: 10px; margin: 10px 0; }
+@media (max-width: 600px) {
+  .top .wrap { height: auto; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+  nav.roles { margin-left: 0; width: 100%; justify-content: space-between; }
+  nav.roles button { flex: 1; padding: 6px 4px; }
+}
+@media print {
+  body * { visibility: hidden; }
+  .invoice, .invoice * { visibility: visible; }
+  .invoice { position: absolute; left: 0; top: 0; width: 100%; }
+}
