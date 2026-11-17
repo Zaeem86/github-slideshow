@@ -29,6 +29,7 @@ TEMPLATE = """<!doctype html>
   <header class="top"><div class="wrap" id="topbar"></div></header>
   <div class="wrap"><main id="app"><noscript><p>Please enable JavaScript to use ZEMO SIIRTO.</p></noscript></main></div>
   <dialog id="modal"></dialog>
+  <script src="{root}config.js"></script>
   <script src="{root}app.js"></script>
 </body>
 </html>

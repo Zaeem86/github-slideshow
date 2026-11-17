@@ -1,4 +1,4 @@
-/* ZEMO SIIRTO – car transfer platform prototype.
+/* ZEMO SIIRTO – car transfer platform.
  *
  * Site map (each page is its own folder with an index.html):
  *   /                      public landing page
@@ -7,8 +7,12 @@
  *   /admin/{login,dashboard,drivers,customers,orders,pricing,payments,settings}
  *
  * Every page loads this one script; <body data-portal data-page data-root> tells it what to render.
- * Data lives in the browser (localStorage), shared by all pages of the site.
- * DEMO ONLY: logins are client-side and payments are simulated. A real backend is needed before going live.
+ *
+ * Two backends with the same interface (see `Local` and `Remote` below):
+ *  - Local demo (default): data lives in the browser's localStorage. No server needed.
+ *  - Supabase: when config.js sets supabaseUrl + supabaseAnonKey, data and logins come from Supabase.
+ *    The page loads everything the user may see with one call (get_app_state) and every change is a
+ *    role-checked database function (see supabase/migrations/*_app_api.sql).
  */
 (function () {
   'use strict';
@@ -19,6 +23,11 @@
   const PAGE = BODY.dataset.page || 'home';
   const ROOT = BODY.dataset.root || './';
   const params = new URLSearchParams(location.search);
+
+  const CONFIG = window.ZEMO_CONFIG || {};
+  const REMOTE = !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
+  const SUPABASE_JS = CONFIG.supabaseJsUrl || 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+  let sb = null;
 
   function url(portal, page, query) {
     let u = ROOT + (portal ? portal + '/' : '') + (page ? page + '/' : '');
@@ -37,7 +46,7 @@
   const DEFAULT_PAGE = { customer: 'dashboard', driver: 'available-jobs', admin: 'dashboard' };
   const PORTAL_LABEL = { customer: 'Customer', driver: 'Driver', admin: 'Admin' };
 
-  // ---------- Reference data ----------
+  // ---------- Reference data (cities must match public.cities in the database) ----------
   const CITIES = {
     'Helsinki': [60.1699, 24.9384], 'Espoo': [60.2055, 24.6559], 'Vantaa': [60.2934, 25.0378],
     'Porvoo': [60.3923, 25.6651], 'Tampere': [61.4978, 23.7610], 'Turku': [60.4518, 22.2666],
@@ -51,7 +60,7 @@
 
   const STATUSES = [
     ['pending_payment', 'Awaiting payment', 'warn'],
-    ['awaiting_driver', 'Paid – finding driver', 'info'],
+    ['open', 'Paid – finding driver', 'info'],
     ['assigned', 'Driver assigned', 'info'],
     ['picked_up', 'Car picked up', 'info'],
     ['in_transit', 'In transit', 'info'],
@@ -71,8 +80,10 @@
   };
   const DEFAULT_COMPANY = { name: 'ZEMO SIIRTO', businessId: '', email: 'info@zemosiirto.fi', phone: '', address: '', iban: '' };
 
-  // ---------- Storage ----------
-  const KEY = 'zemo-siirto-v2';
+  // ---------- State ----------
+  // `db` is what the pages render. Local mode: the whole demo database, persisted in localStorage.
+  // Supabase mode: the snapshot returned by get_app_state() (same shape), reloaded after every change.
+  const KEY = 'zemo-siirto-v3';
   function fresh() {
     return { settings: { ...DEFAULT_SETTINGS }, company: { ...DEFAULT_COMPANY }, admin: null,
       customers: [], drivers: [], orders: [], seq: 1000, session: { customerId: '', driverId: '', admin: false } };
@@ -86,8 +97,11 @@
     d.session = { customerId: '', driverId: '', admin: false, ...d.session };
     return d;
   }
-  let db = load();
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* storage unavailable */ } }
+  let db = REMOTE ? fresh() : load();
+  function save() {
+    if (REMOTE) return;
+    try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* storage unavailable */ }
+  }
 
   // ---------- Helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -103,11 +117,15 @@
   const findOrder = id => db.orders.find(o => o.id === id);
   const findDriver = id => db.drivers.find(d => d.id === id);
   const findCustomer = id => db.customers.find(c => c.id === id);
+  const uuidOf = id => { const o = findOrder(id); if (!o) throw new Error('Order not found'); return o.uuid; };
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const yearsSince = iso => (Date.now() - new Date(iso)) / 31557600000;
+  const validIban = s => /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(String(s).replace(/\s/g, '').toUpperCase());
 
   function toast(msg) {
     const t = document.createElement('div');
     t.className = 'toast'; t.textContent = msg;
-    document.body.appendChild(t); setTimeout(() => t.remove(), 2800);
+    document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
   }
   function flash(msg) { try { sessionStorage.setItem('zemo-flash', msg); } catch (e) { /* ignore */ } }
   function showFlash() {
@@ -116,13 +134,13 @@
   function go(portal, page, query, msg) { if (msg) flash(msg); location.href = url(portal, page, query); }
 
   const modal = $('#modal');
-  function openModal(html) { modal.innerHTML = html; modal.showModal(); }
+  function openModal(html) { modal.innerHTML = html; if (!modal.open) modal.showModal(); }
   modal.addEventListener('click', e => { if (e.target === modal || e.target.closest('[data-close]')) modal.close(); });
 
-  // ---------- Passwords (client-side demo only) ----------
+  // ---------- Passwords (local demo only – Supabase Auth handles them in Supabase mode) ----------
   function newSalt() {
     const a = new Uint8Array(12);
-    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => { a[i] = Math.random() * 256; });
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a); else a.forEach((_, i) => { a[i] = Math.random() * 256; });
     return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
   }
   async function hash(password, salt) {
@@ -135,9 +153,9 @@
     return 'fnv' + h.toString(16);
   }
   async function credentials(password) { const salt = newSalt(); return { salt, passHash: await hash(password, salt) }; }
-  async function checkPassword(user, password) { return !!user && await hash(password, user.salt) === user.passHash; }
+  async function checkPassword(user, password) { return !!user && !!user.salt && await hash(password, user.salt) === user.passHash; }
 
-  // ---------- Pricing (distance-based) ----------
+  // ---------- Pricing (same formula as public._quote in the database) ----------
   function haversine(a, b) {
     const R = 6371, rad = x => x * Math.PI / 180;
     const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
@@ -146,16 +164,16 @@
   }
   function estimateKm(from, to) {
     if (!CITIES[from] || !CITIES[to]) return null;
-    if (from === to) return db.settings.sameCityKm;
+    if (from === to) return +db.settings.sameCityKm;
     return Math.round(haversine(CITIES[from], CITIES[to]) * db.settings.roadFactor);
   }
   function priceFor(km) {
     const s = db.settings;
-    const net = Math.round(Math.max(s.minPrice, s.baseFee + s.perKm * km) * 100) / 100;
-    const vat = Math.round(net * s.vatRate) / 100;
-    return { km, net, vat, total: Math.round((net + vat) * 100) / 100, vatRate: s.vatRate };
+    const netCents = Math.max(Math.round(s.minPrice * 100), Math.round(s.baseFee * 100) + Math.round(s.perKm * 100) * km);
+    const vatCents = Math.round(netCents * s.vatRate / 100);
+    return { km, net: netCents / 100, vat: vatCents / 100, total: (netCents + vatCents) / 100, vatRate: +s.vatRate, driverShare: +s.driverShare };
   }
-  const driverPay = o => Math.round(o.price.net * db.settings.driverShare) / 100;
+  const driverPay = o => Math.round(o.price.net * (o.price.driverShare ?? db.settings.driverShare)) / 100;
   function quoteHtml(q) {
     if (!q) return '<span class="muted">Choose cities to see the price.</span>';
     return `<div class="row"><div>
@@ -168,15 +186,9 @@
       .map(c => `<option ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
   }
 
-  // ---------- Order helpers ----------
-  function setStatus(o, status, extra) {
-    o.status = status;
-    o.history.push({ status, at: now(), ...(extra || {}) });
-    save();
-  }
-
+  // ---------- Shared renderers ----------
   function timeline(o) {
-    if (o.status === 'cancelled') return `<p>${badge('cancelled')} <span class="muted">${dt(o.history.at(-1).at)}</span></p>`;
+    if (o.status === 'cancelled') return `<p>${badge('cancelled')} <span class="muted">${dt((o.history.at(-1) || {}).at)}</span></p>`;
     const idx = STATUSES.findIndex(s => s[0] === o.status);
     return '<ul class="timeline">' + STATUSES.map((s, i) => {
       const h = [...o.history].reverse().find(x => x.status === s[0]);
@@ -195,7 +207,7 @@
         <div><div class="muted">Delivery</div>${esc(o.dropoff.address)}, ${esc(o.dropoff.city)}
           ${opts.contacts && o.dropoff.contact ? `<br><span class="muted">Contact: ${esc(o.dropoff.contact)}</span>` : ''}</div>
         <div><div class="muted">Vehicle</div>${esc(o.car.model)} · ${esc(o.car.plate)}<br>${esc(o.car.gearbox)}, ${esc(o.car.fuel)}</div>
-        ${opts.hideDriver ? '' : `<div><div class="muted">Driver</div>${d ? esc(d.name) + (opts.driverPhone ? `<br><a href="tel:${esc(d.phone)}">${esc(d.phone)}</a>` : '') : '<span class="muted">Not yet assigned</span>'}</div>`}
+        ${opts.hideDriver ? '' : `<div><div class="muted">Driver</div>${d ? esc(d.name) + (opts.driverPhone && d.phone ? `<br><a href="tel:${esc(d.phone)}">${esc(d.phone)}</a>` : '') : '<span class="muted">Not yet assigned</span>'}</div>`}
       </div>
       ${o.notes && opts.notes !== false ? `<p class="notice">${esc(o.notes)}</p>` : ''}`;
   }
@@ -217,9 +229,9 @@
       <div class="table-scroll mt"><table><thead><tr><th>Area</th><th>Pickup</th><th>Delivery</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
-  // ---------- Payment & invoices (shared) ----------
   function paymentModal(id) {
     const o = findOrder(id);
+    if (!o) return;
     openModal(`
       <h2>Payment – ${esc(o.id)}</h2>
       <p class="muted">${esc(o.pickup.city)} → ${esc(o.dropoff.city)} · ${o.price.km} km · ${esc(o.car.model)} (${esc(o.car.plate)})</p>
@@ -248,30 +260,6 @@
       sum += n; alt = !alt;
     }
     return num.length >= 12 && sum % 10 === 0;
-  }
-
-  function submitPayment(f, d) {
-    const o = findOrder(d.id);
-    if (!o || o.payment) return;
-    const payment = { method: d.method, paidAt: now() };
-    if (d.method === 'card') {
-      const num = (d.card || '').replace(/\D/g, '');
-      const m = /^(\d{2})\s*\/\s*(\d{2})$/.exec(d.exp || '');
-      if (!luhn(num)) return toast('Invalid card number');
-      if (!m || +m[1] < 1 || +m[1] > 12 || new Date(2000 + +m[2], +m[1]) < new Date()) return toast('Invalid expiry date');
-      if (!/^\d{3,4}$/.test(d.cvc || '')) return toast('Invalid CVC');
-      payment.last4 = num.slice(-4);
-    }
-    o.payment = payment;
-    setStatus(o, 'awaiting_driver');
-    render();
-    openModal(`
-      <h2>✅ Booking confirmed</h2>
-      <p>Thank you, ${esc(o.customer.name)}. Your transfer <b>${esc(o.id)}</b> is booked and paid.</p>
-      <p class="muted">Pickup ${esc(o.pickup.date)} at ${esc(o.pickup.time)} from ${esc(o.pickup.address)}, ${esc(o.pickup.city)}.
-      A confirmation would be sent to ${esc(o.customer.email)}. We'll notify you when a driver is assigned.</p>
-      <div class="row"><button class="btn" data-invoice="${esc(o.id)}">View invoice</button><span class="spacer"></span>
-        <a class="btn primary" href="${url('customer', 'tracking', { id: o.id })}">Track order</a></div>`);
   }
 
   function invoiceModal(id) {
@@ -347,7 +335,7 @@
       const active = list.filter(o => !['delivered', 'cancelled'].includes(o.status));
       const spent = list.filter(o => o.payment && o.status !== 'cancelled').reduce((t, o) => t + o.price.total, 0);
       return `
-      <div class="card"><div class="row"><h2 class="m0">Hei, ${esc(c.name.split(' ')[0])}!</h2><span class="spacer"></span>
+      <div class="card"><div class="row"><h2 class="m0">Hei, ${esc((c.name || '').split(' ')[0])}!</h2><span class="spacer"></span>
         <a class="btn primary" href="${url('customer', 'create-order')}">+ New transfer</a></div>
         <div class="grid mt">${stat('Active transfers', active.length)}${stat('Delivered', list.filter(o => o.status === 'delivered').length)}${stat('Total spent', eur(spent))}</div></div>
       <div class="card"><h2>My orders & invoices</h2>${!list.length ? '<div class="empty">No orders yet.</div>' : `
@@ -356,7 +344,7 @@
           <td>${eur(o.price.total)}</td><td>${badge(o.status)}</td>
           <td><div class="row"><a class="btn sm" href="${url('customer', 'tracking', { id: o.id })}">Track</a>
             ${o.payment ? `<button class="btn sm" data-invoice="${esc(o.id)}">Invoice</button>` : o.status !== 'cancelled' ? `<button class="btn sm primary" data-pay="${esc(o.id)}">Pay</button>` : ''}
-            ${['pending_payment', 'awaiting_driver'].includes(o.status) ? `<button class="btn sm danger" data-cancel="${esc(o.id)}">Cancel</button>` : ''}
+            ${['pending_payment', 'open'].includes(o.status) ? `<button class="btn sm danger" data-cancel="${esc(o.id)}">Cancel</button>` : ''}
           </div></td></tr>`).join('')}
         </tbody></table></div>`}</div>
       <form class="card" id="customerProfile"><h2>Account</h2><div class="grid">
@@ -368,7 +356,6 @@
     },
 
     'create-order'(c) {
-      const today = new Date().toISOString().slice(0, 10);
       return `
       <form class="card" id="orderForm">
         <h2>Create a car transfer request</h2>
@@ -376,25 +363,25 @@
         <h3>Pickup</h3>
         <div class="grid">
           <label>City<select name="fromCity" required>${cityOptions('Helsinki')}</select></label>
-          <label>Address<input name="fromAddr" required placeholder="Street, postcode"></label>
-          <label>Date<input name="date" type="date" min="${today}" value="${today}" required></label>
+          <label>Address<input name="fromAddr" required maxlength="200" placeholder="Street, postcode"></label>
+          <label>Date<input name="date" type="date" min="${todayISO()}" value="${todayISO()}" required></label>
           <label>Time<input name="time" type="time" value="09:00" required></label>
-          <label>Contact at pickup (optional)<input name="fromContact" placeholder="Name, phone"></label>
+          <label>Contact at pickup (optional)<input name="fromContact" maxlength="200" placeholder="Name, phone"></label>
         </div>
         <h3>Delivery</h3>
         <div class="grid">
           <label>City<select name="toCity" required>${cityOptions('Tampere')}</select></label>
-          <label>Address<input name="toAddr" required placeholder="Street, postcode"></label>
-          <label>Contact at delivery (optional)<input name="toContact" placeholder="Name, phone"></label>
+          <label>Address<input name="toAddr" required maxlength="200" placeholder="Street, postcode"></label>
+          <label>Contact at delivery (optional)<input name="toContact" maxlength="200" placeholder="Name, phone"></label>
         </div>
         <h3>Vehicle</h3>
         <div class="grid">
-          <label>Make & model<input name="car" required placeholder="e.g. Volvo V60"></label>
-          <label>Registration plate<input name="plate" required placeholder="ABC-123" class="upper"></label>
+          <label>Make & model<input name="car" required maxlength="100" placeholder="e.g. Volvo V60"></label>
+          <label>Registration plate<input name="plate" required maxlength="20" placeholder="ABC-123" class="upper"></label>
           <label>Gearbox<select name="gearbox"><option>Automatic</option><option>Manual</option></select></label>
           <label>Fuel / power<select name="fuel"><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
         </div>
-        <label>Notes for the driver<textarea name="notes" placeholder="Key handover, parking, special instructions…"></textarea></label>
+        <label>Notes for the driver<textarea name="notes" maxlength="2000" placeholder="Key handover, parking, special instructions…"></textarea></label>
         <h3>Price (calculated from the distance)</h3>
         <div class="price-box" id="quoteBox"></div>
         <div class="row mt"><span class="spacer"></span><button class="btn primary" type="submit">Continue to payment</button></div>
@@ -418,53 +405,24 @@
     }
   };
 
-  async function customerSignIn(f, d) {
-    const c = db.customers.find(x => x.email === d.email.trim().toLowerCase());
-    if (!await checkPassword(c, d.password)) return toast('Wrong email or password');
-    db.session.customerId = c.id; save();
-    go('customer', nextPage('customer'));
-  }
-  async function customerRegister(f, d) {
-    const email = d.email.trim().toLowerCase();
-    if (db.customers.some(x => x.email === email)) return toast('An account with this email already exists');
-    const c = { id: 'CUS-' + (++db.seq), createdAt: now(), name: d.name.trim(), email, phone: d.phone.trim(),
-      company: d.company.trim(), ...await credentials(d.password) };
-    db.customers.push(c); db.session.customerId = c.id; save();
-    go('customer', 'create-order', null, 'Account created – welcome!');
-  }
-  function customerProfile(f, d) {
-    const c = findCustomer(db.session.customerId);
-    Object.assign(c, { name: d.name.trim(), phone: d.phone.trim(), company: d.company.trim() });
-    save(); toast('Saved'); render();
-  }
   function refreshQuote() {
     const f = $('#orderForm'); if (!f) return;
     const km = estimateKm(f.fromCity.value, f.toCity.value);
     $('#quoteBox').innerHTML = quoteHtml(km == null ? null : priceFor(km));
   }
-  function submitOrder(f, d) {
-    const c = findCustomer(db.session.customerId);
-    const o = {
-      id: 'ZS-' + (++db.seq), createdAt: now(), customerId: c.id,
-      customer: { name: c.name, email: c.email, phone: c.phone, company: c.company },
-      pickup: { city: d.fromCity, address: d.fromAddr.trim(), date: d.date, time: d.time, contact: d.fromContact.trim() },
-      dropoff: { city: d.toCity, address: d.toAddr.trim(), contact: d.toContact.trim() },
-      car: { model: d.car.trim(), plate: d.plate.trim().toUpperCase(), gearbox: d.gearbox, fuel: d.fuel },
-      notes: d.notes.trim(), price: priceFor(estimateKm(d.fromCity, d.toCity)), status: 'pending_payment',
-      history: [], driverId: '', rejectedBy: [], inspection: {}, payment: null
-    };
-    o.history.push({ status: 'pending_payment', at: o.createdAt });
-    db.orders.push(o); save();
-    f.reset(); refreshQuote();
-    paymentModal(o.id);
+
+  function confirmEmailNotice(email) {
+    openModal(`<h2>📧 Check your email</h2>
+      <p>We sent a confirmation link to <b>${esc(email)}</b>. Open it, then sign in here.</p>
+      <div class="row"><span class="spacer"></span><button class="btn primary" data-close>OK</button></div>`);
   }
 
   // ================= DRIVER PORTAL =================
-  const DRIVER_STATUS = { pending: ['Pending verification', 'warn'], verified: ['Verified', 'ok'], rejected: ['Rejected', 'bad'], suspended: ['Suspended', 'bad'] };
-  const driverBadge = d => `<span class="badge ${DRIVER_STATUS[d.status][1]}">${DRIVER_STATUS[d.status][0]}</span>`;
+  const DRIVER_STATUS = { pending: ['Pending verification', 'warn'], approved: ['Approved', 'ok'], rejected: ['Rejected', 'bad'], suspended: ['Suspended', 'bad'] };
+  const driverBadge = d => { const [l, t] = DRIVER_STATUS[d.status] || [d.status, '']; return `<span class="badge ${t}">${esc(l)}</span>`; };
   function gate(d) {
-    if (d.status === 'verified') return '';
-    const msg = { pending: 'Your documents are being reviewed by ZEMO SIIRTO. You can take jobs once you are verified.',
+    if (d.status === 'approved') return '';
+    const msg = { pending: 'Your documents are being reviewed by ZEMO SIIRTO. You can take jobs once you are approved.',
       rejected: 'Your application was not approved. Please contact support.', suspended: 'Your account is suspended. Please contact support.' }[d.status];
     return `<div class="card"><div class="row"><h2 class="m0">Not available yet</h2>${driverBadge(d)}</div><p class="muted">${msg}</p></div>`;
   }
@@ -478,6 +436,10 @@
       <div class="row mt"><span class="muted">${o.price.km} km · your pay</span><b>${eur(driverPay(o))}</b></div>
       ${extra}<div class="row mt">${actions}</div></div>`;
   }
+  const passwordForm = id => `<form class="card" id="${id}"><h2>Change password</h2><div class="grid">
+      <label>Current password<input name="current" type="password" required autocomplete="current-password"></label>
+      <label>New password (min. 8)<input name="password" type="password" minlength="8" required autocomplete="new-password"></label></div>
+      <div class="row mt"><span class="spacer"></span><button class="btn">Change password</button></div></form>`;
 
   const DRIVER = {
     login() {
@@ -508,12 +470,12 @@
 
     'available-jobs'(d) {
       const g = gate(d); if (g) return g;
-      const jobs = db.orders.filter(o => o.status === 'awaiting_driver' && !o.rejectedBy.includes(d.id))
-        .map(o => ({ o, away: estimateKm(d.city, o.pickup.city) })).sort((a, b) => a.away - b.away);
-      return `<div class="card"><h2>Available transfer jobs</h2><p class="muted m0">Paid orders waiting for a driver, nearest to ${esc(d.city)} first.</p></div>` +
+      const jobs = db.orders.filter(o => o.status === 'open' && !(o.rejectedBy || []).includes(d.id))
+        .map(o => ({ o, away: estimateKm(d.city, o.pickup.city) })).sort((a, b) => (a.away ?? 1e9) - (b.away ?? 1e9));
+      return `<div class="card"><h2>Available transfer jobs</h2><p class="muted m0">Paid orders waiting for a driver${d.city ? `, nearest to ${esc(d.city)} first` : ''}.</p></div>` +
         (jobs.length ? jobs.map(({ o, away }) => jobCard(o, `<button class="btn danger" data-reject="${esc(o.id)}">Reject</button>
           <span class="spacer"></span><button class="btn primary" data-accept="${esc(o.id)}">Accept job</button>`,
-          `<p class="muted m0">Pickup is ~${away} km from ${esc(d.city)}</p>`)).join('')
+          away != null ? `<p class="muted m0">Pickup is ~${away} km from ${esc(d.city)}</p>` : '')).join('')
           : empty('No open jobs right now.'));
     },
 
@@ -560,10 +522,10 @@
           const prev = stage === 'delivery' && o.inspection.pickup ? o.inspection.pickup.areas[a] : '';
           return `<label>${esc(a)}${prev ? ` <span class="muted">(pickup: ${esc(prev)})</span>` : ''}<select name="area${i}">${CONDITIONS.map(c => `<option ${c === (prev || 'OK') ? 'selected' : ''}>${c}</option>`).join('')}</select></label>`;
         }).join('')}</div>
-        <label>Damage description / notes<textarea name="notes"></textarea></label>
+        <label>Damage description / notes<textarea name="notes" maxlength="2000"></textarea></label>
         <label>Photos (all four sides + dashboard)<input name="photos" type="file" accept="image/*" capture="environment" multiple></label>
         <div class="grid">
-          <label>${stage === 'pickup' ? 'Car handed over by' : 'Car received by'}<input name="person" required placeholder="Full name"></label>
+          <label>${stage === 'pickup' ? 'Car handed over by' : 'Car received by'}<input name="person" required maxlength="200" placeholder="Full name"></label>
         </div>
         ${stage === 'pickup' ? '<label class="check"><input type="checkbox" name="docs"> Registration document in the car</label>' : ''}
         <label class="check"><input type="checkbox" required> ${stage === 'pickup' ? 'I have checked the car and the details above are correct' : 'The car was handed over and the receiver confirmed its condition'}</label>
@@ -618,7 +580,7 @@
           ${stat('Completed jobs', done.length)}${stat('Kilometres driven', done.reduce((t, o) => t + o.price.km, 0))}</div>
         <p class="muted">You earn ${db.settings.driverShare}% of the transfer price excl. VAT. Payouts go to ${mask(d.iban)}.</p>
         ${done.length ? `<div class="table-scroll"><table><thead><tr><th>Order</th><th>Route</th><th>Delivered</th><th>Pay</th><th>Payout</th></tr></thead><tbody>
-          ${done.reverse().map(o => `<tr><td>${esc(o.id)}</td><td>${esc(o.pickup.city)} → ${esc(o.dropoff.city)}</td><td>${dt(o.history.at(-1).at)}</td><td>${eur(driverPay(o))}</td>
+          ${[...done].reverse().map(o => `<tr><td>${esc(o.id)}</td><td>${esc(o.pickup.city)} → ${esc(o.dropoff.city)}</td><td>${dt(o.history.at(-1).at)}</td><td>${eur(driverPay(o))}</td>
             <td>${o.driverPaidAt ? `<span class="badge ok">Paid ${dt(o.driverPaidAt)}</span>` : '<span class="badge warn">Pending</span>'}</td></tr>`).join('')}
         </tbody></table></div>` : ''}</div>`;
     },
@@ -638,117 +600,59 @@
     }
   };
 
-  const passwordForm = id => `<form class="card" id="${id}"><h2>Change password</h2><div class="grid">
-      <label>Current password<input name="current" type="password" required autocomplete="current-password"></label>
-      <label>New password (min. 8)<input name="password" type="password" minlength="8" required autocomplete="new-password"></label></div>
-      <div class="row mt"><span class="spacer"></span><button class="btn">Change password</button></div></form>`;
-
-  const validIban = s => /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(s.replace(/\s/g, '').toUpperCase());
-
-  async function driverSignIn(f, d) {
-    const drv = db.drivers.find(x => x.email === d.email.trim().toLowerCase());
-    if (!await checkPassword(drv, d.password)) return toast('Wrong email or password');
-    db.session.driverId = drv.id; save();
-    go('driver', nextPage('driver'));
-  }
-  async function driverRegister(f, d) {
-    const email = d.email.trim().toLowerCase();
-    if ((Date.now() - new Date(d.dob)) / 31557600000 < 20) return toast('Drivers must be at least 20 years old');
-    if (new Date(d.licenseExpiry) < new Date()) return toast('Driving licence has expired');
-    if (!validIban(d.iban)) return toast('Invalid IBAN');
-    if (db.drivers.some(x => x.email === email)) return toast('Email already registered');
-    const drv = {
-      id: 'DRV-' + (++db.seq), createdAt: now(), status: 'pending',
-      name: d.name.trim(), email, phone: d.phone.trim(), city: d.city, dob: d.dob,
-      licenseNo: d.licenseNo.trim(), licenseClass: d.licenseClass, licenseExpiry: d.licenseExpiry,
-      iban: d.iban.replace(/\s/g, '').toUpperCase(), licensePhoto: f.licensePhoto.files[0] ? f.licensePhoto.files[0].name : '',
-      ...await credentials(d.password)
-    };
-    db.drivers.push(drv); db.session.driverId = drv.id; save();
-    go('driver', 'profile', null, 'Registration submitted – awaiting verification');
-  }
-  function driverProfile(f, d) {
-    if (!validIban(d.iban)) return toast('Invalid IBAN');
-    Object.assign(findDriver(db.session.driverId), { phone: d.phone.trim(), city: d.city, iban: d.iban.replace(/\s/g, '').toUpperCase() });
-    save(); toast('Saved'); render();
-  }
-  async function changePassword(user, d) {
-    if (!await checkPassword(user, d.current)) return toast('Current password is wrong');
-    Object.assign(user, await credentials(d.password)); save();
-    toast('Password changed'); render();
-  }
-  function submitInspection(f, d) {
-    const me = findDriver(db.session.driverId);
-    const o = findOrder(d.id);
-    if (!o || o.driverId !== me.id) return toast('Not your job');
-    const stage = d.stage;
-    if (stage === 'pickup' && o.status !== 'assigned') return toast('Pickup already recorded');
-    if (stage === 'delivery' && !['picked_up', 'in_transit'].includes(o.status)) return toast('Job is not in transit');
-    if (stage === 'delivery' && o.inspection.pickup && +d.odo < o.inspection.pickup.odo) return toast('Odometer is lower than at pickup');
-    o.inspection[stage] = {
-      at: now(), odo: +d.odo, fuel: d.fuel, notes: d.notes.trim(), person: d.person.trim(),
-      areas: Object.fromEntries(AREAS.map((a, i) => [a, d['area' + i]])),
-      photos: [...f.photos.files].map(x => x.name),
-      ...(stage === 'pickup' ? { keys: +d.keys, docs: !!d.docs } : {})
-    };
-    if (stage === 'pickup') { setStatus(o, 'picked_up'); go('driver', 'navigation', { order: o.id }, 'Pickup recorded – drive safely!'); }
-    else { setStatus(o, 'delivered'); go('driver', 'earnings', null, `Delivered – ${eur(driverPay(o))} added to your earnings`); }
-  }
-
   // ================= ADMIN PORTAL =================
   function revenueStats() {
     const paid = db.orders.filter(o => o.payment && o.status !== 'cancelled');
-    const revenue = paid.reduce((t, o) => t + o.price.net, 0);
-    const payouts = paid.reduce((t, o) => t + driverPay(o), 0);
-    return { revenue, payouts };
+    return { revenue: paid.reduce((t, o) => t + o.price.net, 0), payouts: paid.reduce((t, o) => t + driverPay(o), 0) };
   }
   const refundsDue = () => db.orders.filter(o => o.status === 'cancelled' && o.payment && !o.refundedAt);
   const payoutsDue = () => db.orders.filter(o => o.status === 'delivered' && !o.driverPaidAt);
 
-  function adminOrderRow(o, verified) {
+  function adminOrderRow(o, approved) {
     return `<tr><td>${esc(o.id)}<br><span class="muted">${esc(o.pickup.date)}</span></td>
       <td>${esc(o.customer.name)}<br><span class="muted">${esc(o.customer.phone)}</span></td>
       <td>${esc(o.pickup.city)} → ${esc(o.dropoff.city)}<br><span class="muted">${o.price.km} km</span></td>
       <td>${eur(o.price.total)}</td><td>${badge(o.status)}</td>
-      <td>${o.status === 'awaiting_driver' && verified.length ? `<select data-assign="${esc(o.id)}" class="m0"><option value="">Assign…</option>
-          ${verified.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select>` : esc((findDriver(o.driverId) || {}).name || '–')}</td>
+      <td>${o.status === 'open' && approved.length ? `<select data-assign="${esc(o.id)}" class="m0"><option value="">Assign…</option>
+          ${approved.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}</select>` : esc((findDriver(o.driverId) || {}).name || '–')}</td>
       <td><div class="row"><button class="btn sm" data-detail="${esc(o.id)}">Details</button>
         ${!['delivered', 'cancelled'].includes(o.status) ? `<button class="btn sm danger" data-cancel="${esc(o.id)}">Cancel</button>` : ''}</div></td></tr>`;
   }
   function ordersTable(list) {
-    const verified = db.drivers.filter(d => d.status === 'verified');
+    const approved = db.drivers.filter(d => d.status === 'approved');
     return !list.length ? '<div class="empty">No orders.</div>' : `<div class="table-scroll"><table><thead><tr><th>Order</th><th>Customer</th><th>Route</th><th>Total</th><th>Status</th><th>Driver</th><th></th></tr></thead>
-      <tbody>${list.map(o => adminOrderRow(o, verified)).join('')}</tbody></table></div>`;
+      <tbody>${list.map(o => adminOrderRow(o, approved)).join('')}</tbody></table></div>`;
   }
 
   const ADMIN = {
     login() {
-      if (!db.admin) return `<form class="card narrow" id="adminSetup"><h2>Create the admin account</h2>
+      const signIn = `<form class="card narrow" id="adminSignIn"><h2>Admin sign in</h2>
+        <label>Email<input name="email" type="email" required autocomplete="email"></label>
+        <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+        <div class="row mt"><span class="spacer"></span><button class="btn primary">Sign in</button></div>
+        ${REMOTE ? `<p class="notice">Admins are promoted in Supabase: create a customer account, then run<br><code>update public.profiles set role = 'admin' where email = '…';</code></p>` : ''}</form>`;
+      if (REMOTE || db.admin) return signIn;
+      return `<form class="card narrow" id="adminSetup"><h2>Create the admin account</h2>
         <p class="muted">No admin exists yet. The first account created here becomes the administrator.</p>
         <label>Email<input name="email" type="email" required autocomplete="email"></label>
         <label>Password (min. 8)<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Repeat password<input name="password2" type="password" minlength="8" required autocomplete="new-password"></label>
         <div class="row mt"><span class="spacer"></span><button class="btn primary">Create admin</button></div></form>`;
-      return `<form class="card narrow" id="adminSignIn"><h2>Admin sign in</h2>
-        <label>Email<input name="email" type="email" required autocomplete="email"></label>
-        <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
-        <div class="row mt"><span class="spacer"></span><button class="btn primary">Sign in</button></div></form>`;
     },
 
     dashboard() {
       const { revenue, payouts } = revenueStats();
       const count = s => db.orders.filter(o => o.status === s).length;
-      const pendingDrivers = db.drivers.filter(d => d.status === 'pending').length;
       const todo = [
-        [pendingDrivers, `driver(s) waiting for verification`, url('admin', 'drivers')],
-        [count('awaiting_driver'), 'paid order(s) without a driver', url('admin', 'orders', { status: 'awaiting_driver' })],
+        [db.drivers.filter(d => d.status === 'pending').length, 'driver(s) waiting for verification', url('admin', 'drivers')],
+        [count('open'), 'paid order(s) without a driver', url('admin', 'orders', { status: 'open' })],
         [refundsDue().length, 'refund(s) due', url('admin', 'payments')],
         [payoutsDue().length, 'delivered job(s) awaiting driver payout', url('admin', 'payments')]
       ].filter(t => t[0]);
       return `<div class="card"><h2>Dashboard</h2><div class="grid">
         ${stat('Revenue (excl. VAT)', eur(revenue))}${stat('Driver payouts', eur(payouts))}${stat('Gross margin', eur(revenue - payouts))}
         ${stat('Orders', db.orders.length)}${stat('Active transfers', db.orders.filter(o => ACTIVE.includes(o.status)).length)}
-        ${stat('Customers', db.customers.length)}${stat('Verified drivers', db.drivers.filter(d => d.status === 'verified').length)}</div></div>
+        ${stat('Customers', db.customers.length)}${stat('Approved drivers', db.drivers.filter(d => d.status === 'approved').length)}</div></div>
       <div class="card"><h2>Needs attention</h2>${todo.length ? `<ul class="todo">${todo.map(([n, l, h]) => `<li><a href="${h}"><b>${n}</b> ${l} →</a></li>`).join('')}</ul>` : '<p class="muted m0">All clear 🎉</p>'}</div>
       <div class="card"><div class="row"><h2 class="m0">Latest orders</h2><span class="spacer"></span><a class="btn sm" href="${url('admin', 'orders')}">All orders</a></div>
         <div class="mt">${ordersTable([...db.orders].reverse().slice(0, 5))}</div></div>`;
@@ -758,15 +662,15 @@
       return `<div class="card"><h2>Drivers</h2>${!db.drivers.length ? '<div class="empty">No drivers registered.</div>' : `
         <div class="table-scroll"><table><thead><tr><th>Driver</th><th>Licence</th><th>City</th><th>Jobs</th><th>Status</th><th></th></tr></thead><tbody>
         ${db.drivers.map(d => {
-          const expired = new Date(d.licenseExpiry) < new Date();
+          const expired = !d.licenseExpiry || new Date(d.licenseExpiry) < new Date();
           const jobs = db.orders.filter(o => o.driverId === d.id && o.status === 'delivered').length;
-          const age = Math.floor((Date.now() - new Date(d.dob)) / 31557600000);
-          return `<tr><td>${esc(d.name)}<br><span class="muted">${esc(d.email)} · ${esc(d.phone)} · ${age} y</span></td>
-          <td>${esc(d.licenseNo)} (${esc(d.licenseClass)})<br><span class="muted">valid until ${esc(d.licenseExpiry)}${expired ? ' – EXPIRED' : ''}${d.licensePhoto ? ' · 📎 ' + esc(d.licensePhoto) : ''}</span></td>
+          const age = d.dob ? Math.floor(yearsSince(d.dob)) + ' y' : 'age unknown';
+          return `<tr><td>${esc(d.name)}<br><span class="muted">${esc(d.email)} · ${esc(d.phone)} · ${age}</span></td>
+          <td>${esc(d.licenseNo)} (${esc(d.licenseClass)})<br><span class="muted">valid until ${esc(d.licenseExpiry || '–')}${expired ? ' – EXPIRED' : ''}${d.licensePhoto ? ' · 📎 ' + esc(d.licensePhoto) : ''}</span></td>
           <td>${esc(d.city)}</td><td>${jobs}</td><td>${driverBadge(d)}</td>
-          <td><div class="row">${d.status !== 'verified' ? `<button class="btn sm primary" data-driver-status="verified" data-id="${esc(d.id)}" ${expired ? 'disabled' : ''}>Approve</button>` : ''}
+          <td><div class="row">${d.status !== 'approved' ? `<button class="btn sm primary" data-driver-status="approved" data-id="${esc(d.id)}" ${expired ? 'disabled' : ''}>Approve</button>` : ''}
             ${d.status === 'pending' ? `<button class="btn sm danger" data-driver-status="rejected" data-id="${esc(d.id)}">Reject</button>` : ''}
-            ${d.status === 'verified' ? `<button class="btn sm danger" data-driver-status="suspended" data-id="${esc(d.id)}">Suspend</button>` : ''}</div></td></tr>`;
+            ${d.status === 'approved' ? `<button class="btn sm danger" data-driver-status="suspended" data-id="${esc(d.id)}">Suspend</button>` : ''}</div></td></tr>`;
         }).join('')}</tbody></table></div>`}</div>`;
     },
 
@@ -792,7 +696,7 @@
 
     pricing() {
       const s = db.settings;
-      const f = (k, l, step = '0.01') => `<label>${l}<input name="${k}" type="number" step="${step}" min="0" value="${s[k]}" required></label>`;
+      const f = (k, l, step = '0.01') => `<label>${l}<input name="${k}" type="number" step="${step}" min="0" value="${esc(s[k])}" required></label>`;
       const ex = [15, 50, 180, 400, 800].map(km => { const p = priceFor(km); return `<tr><td>${km} km</td><td>${eur(p.net)}</td><td>${eur(p.total)}</td><td>${eur(p.net * s.driverShare / 100)}</td></tr>`; }).join('');
       return `<form class="card" id="pricingForm"><h2>Pricing rules</h2>
         <div class="grid">${f('baseFee', 'Base fee € (excl. VAT)')}${f('perKm', 'Price per km €')}${f('minPrice', 'Minimum price €')}
@@ -829,27 +733,19 @@
     settings() {
       const co = db.company;
       const f = (k, l) => `<label>${l}<input name="${k}" value="${esc(co[k])}"></label>`;
+      const data = REMOTE
+        ? `<div class="card"><h2>Backend</h2><p class="muted m0">Connected to Supabase. ${db.settings.demoPayments
+            ? '<span class="badge warn">Demo payments ON</span> – customers can mark orders paid without paying. Turn off before going live: <code>update public.app_settings set allow_demo_payments = false;</code>'
+            : '<span class="badge ok">Demo payments off</span>'}</p></div>`
+        : `<div class="card"><h2>Data</h2><p class="muted">Local demo mode – data is stored in this browser only. Demo accounts use the password <b>demo1234</b>: customer demo@example.com, driver mikko@example.com.</p>
+            <div class="row"><button class="btn" id="seedDemo">Load demo data</button><button class="btn danger" id="resetAll">Delete all orders, customers & drivers</button></div></div>`;
       return `<form class="card" id="companyForm"><h2>Company details</h2><p class="muted">Shown on invoices.</p>
         <div class="grid">${f('name', 'Company name')}${f('businessId', 'Business ID (Y-tunnus)')}${f('email', 'Email')}${f('phone', 'Phone')}${f('address', 'Address')}${f('iban', 'IBAN for invoice payments')}</div>
         <div class="row mt"><span class="spacer"></span><button class="btn primary">Save</button></div></form>
-      ${passwordForm('adminPassword')}
-      <div class="card"><h2>Data</h2><p class="muted">Demo accounts use the password <b>demo1234</b>: customer demo@example.com, driver mikko@example.com.</p>
-        <div class="row"><button class="btn" id="seedDemo">Load demo data</button><button class="btn danger" id="resetAll">Delete all orders, customers & drivers</button></div></div>`;
+      ${passwordForm('adminPassword')}${data}`;
     }
   };
 
-  async function adminSetup(f, d) {
-    if (db.admin) return toast('Admin already exists');
-    if (d.password !== d.password2) return toast('Passwords do not match');
-    db.admin = { email: d.email.trim().toLowerCase(), ...await credentials(d.password) };
-    db.session.admin = true; save();
-    go('admin', 'dashboard', null, 'Admin account created');
-  }
-  async function adminSignIn(f, d) {
-    if (d.email.trim().toLowerCase() !== db.admin.email || !await checkPassword(db.admin, d.password)) return toast('Wrong email or password');
-    db.session.admin = true; save();
-    go('admin', nextPage('admin'));
-  }
   function orderDetail(id) {
     const o = findOrder(id);
     openModal(`${orderSummary(o, { driverPhone: true, contacts: true })}
@@ -858,37 +754,351 @@
       <div class="row mt">${o.payment ? `<button class="btn" data-invoice="${esc(o.id)}">Invoice</button>` : ''}<span class="spacer"></span><button class="btn primary" data-close>Close</button></div>`);
   }
 
-  async function seedDemo() {
-    const pw = await credentials('demo1234');
-    const email = 'demo@example.com';
-    if (db.customers.some(c => c.email === email)) return toast('Demo data already loaded');
-    const c = { id: 'CUS-' + (++db.seq), createdAt: now(), name: 'Demo Customer', email, phone: '+358 50 111 2222', company: 'Demo Oy', ...pw };
-    const mk = (name, mail, city, status) => ({ id: 'DRV-' + (++db.seq), createdAt: now(), status, name, email: mail, phone: '+358 40 000 0000',
-      city, dob: '1990-01-01', licenseNo: 'FI' + db.seq, licenseClass: 'B', licenseExpiry: '2032-12-31', iban: 'FI2112345600000785', licensePhoto: '', ...pw });
-    const d1 = mk('Mikko Virtanen', 'mikko@example.com', 'Helsinki', 'verified');
-    db.customers.push(c);
-    db.drivers.push(d1, mk('Aino Korhonen', 'aino@example.com', 'Tampere', 'pending'));
-    const okAreas = Object.fromEntries(AREAS.map(a => [a, 'OK']));
-    [['Helsinki', 'Tampere', 'Toyota Corolla', 'awaiting_driver'], ['Turku', 'Helsinki', 'Volvo XC60', 'delivered'], ['Espoo', 'Oulu', 'Tesla Model 3', 'in_transit']]
-      .forEach(([a, b, car, st]) => {
-        const o = { id: 'ZS-' + (++db.seq), createdAt: now(), customerId: c.id,
-          customer: { name: c.name, email: c.email, phone: c.phone, company: c.company },
-          pickup: { city: a, address: 'Esimerkkikatu 1', date: new Date().toISOString().slice(0, 10), time: '10:00', contact: '' },
-          dropoff: { city: b, address: 'Testitie 5', contact: '' },
-          car: { model: car, plate: 'DEM-' + (db.seq % 1000), gearbox: 'Automatic', fuel: 'Hybrid' }, notes: '', price: priceFor(estimateKm(a, b)),
-          status: 'pending_payment', history: [{ status: 'pending_payment', at: now() }], driverId: '', rejectedBy: [], inspection: {},
-          payment: { method: 'card', last4: '4242', paidAt: now() } };
-        db.orders.push(o);
-        const flow = ['awaiting_driver', 'assigned', 'picked_up', 'in_transit', 'delivered'];
-        for (const s of flow.slice(0, flow.indexOf(st) + 1)) {
-          if (s === 'assigned') o.driverId = d1.id;
-          if (s === 'picked_up') o.inspection.pickup = { at: now(), odo: 42000, fuel: 'Full', keys: 2, docs: true, notes: '', person: c.name, areas: { ...okAreas }, photos: [] };
-          if (s === 'delivered') o.inspection.delivery = { at: now(), odo: 42000 + o.price.km, fuel: '1/2', notes: 'All good', person: 'Reception', areas: { ...okAreas }, photos: [] };
-          setStatus(o, s);
-        }
-      });
-    save(); toast('Demo data loaded'); render();
+  // ======================================================================
+  // BACKENDS – identical interface; the UI only ever calls act(name, args)
+  // ======================================================================
+  const fail = msg => { throw new Error(msg); };
+  function setStatus(o, status, extra) {
+    o.status = status;
+    o.history.push({ status, at: now(), ...(extra || {}) });
   }
+  const meDriver = () => findDriver(db.session.driverId);
+
+  // ---------- Local demo backend (mirrors the rules of the SQL functions) ----------
+  const Local = {
+    async signIn({ portal, email, password }) {
+      email = email.trim().toLowerCase();
+      if (portal === 'admin') {
+        if (!db.admin || email !== db.admin.email || !await checkPassword(db.admin, password)) fail('Wrong email or password');
+        db.session.admin = true; return;
+      }
+      const list = portal === 'driver' ? db.drivers : db.customers;
+      const user = list.find(x => x.email === email);
+      if (!await checkPassword(user, password)) fail('Wrong email or password');
+      db.session[portal === 'driver' ? 'driverId' : 'customerId'] = user.id;
+    },
+    async signUp({ role, email, password, data }) {
+      email = email.trim().toLowerCase();
+      const list = role === 'driver' ? db.drivers : db.customers;
+      if (list.some(x => x.email === email)) fail('An account with this email already exists');
+      const base = { createdAt: now(), name: data.full_name, email, phone: data.phone, ...await credentials(password) };
+      if (role === 'customer') {
+        const c = { id: 'CUS-' + (++db.seq), ...base, company: data.company || '' };
+        db.customers.push(c); db.session.customerId = c.id;
+      } else {
+        const d = { id: 'DRV-' + (++db.seq), ...base, status: 'pending', city: data.home_city, dob: data.date_of_birth,
+          licenseNo: data.license_number, licenseClass: data.license_class, licenseExpiry: data.license_expiry,
+          iban: data.iban.replace(/\s/g, '').toUpperCase(), licensePhoto: data.license_photo_path || '' };
+        db.drivers.push(d); db.session.driverId = d.id;
+      }
+    },
+    async adminSetup({ email, password }) {
+      if (db.admin) fail('Admin already exists');
+      db.admin = { email: email.trim().toLowerCase(), ...await credentials(password) };
+      db.session.admin = true;
+    },
+    signOut({ portal }) {
+      if (portal === 'customer') db.session.customerId = '';
+      if (portal === 'driver') db.session.driverId = '';
+      if (portal === 'admin') db.session.admin = false;
+    },
+    async changePassword({ portal, current, password }) {
+      const user = portal === 'admin' ? db.admin : portal === 'driver' ? meDriver() : findCustomer(db.session.customerId);
+      if (!await checkPassword(user, current)) fail('Current password is wrong');
+      Object.assign(user, await credentials(password));
+    },
+    updateMyProfile({ name, phone, company }) {
+      Object.assign(findCustomer(db.session.customerId), { name, phone, company });
+    },
+    updateDriverProfile({ phone, city, iban }) {
+      Object.assign(meDriver(), { phone, city, iban: iban.replace(/\s/g, '').toUpperCase() });
+    },
+    createOrder(p) {
+      const c = findCustomer(db.session.customerId);
+      if (!c) fail('Please sign in first');
+      if (p.pickup_date < todayISO()) fail('Pickup date must be today or later');
+      const o = {
+        id: 'ZS-' + (++db.seq), createdAt: now(), customerId: c.id,
+        customer: { name: c.name, email: c.email, phone: c.phone, company: c.company },
+        pickup: { city: p.pickup_city, address: p.pickup_address, date: p.pickup_date, time: p.pickup_time, contact: p.pickup_contact },
+        dropoff: { city: p.dropoff_city, address: p.dropoff_address, contact: p.dropoff_contact },
+        car: { model: p.car_model, plate: p.car_plate.toUpperCase(), gearbox: p.gearbox, fuel: p.fuel },
+        notes: p.notes, price: priceFor(estimateKm(p.pickup_city, p.dropoff_city)), status: 'pending_payment',
+        history: [], driverId: '', rejectedBy: [], claimedBy: [], inspection: {}, payment: null
+      };
+      setStatus(o, 'pending_payment');
+      db.orders.push(o);
+      return { id: o.id };
+    },
+    payOrder({ id, method, last4 }) {
+      const o = findOrder(id);
+      if (!o || o.customerId !== db.session.customerId) fail('Order not found');
+      if (o.status !== 'pending_payment') fail('This order is already paid');
+      o.payment = { method, paidAt: now(), ...(method === 'card' ? { last4 } : {}) };
+      setStatus(o, 'open');
+    },
+    cancelOrder({ id }) {
+      const o = findOrder(id);
+      if (PORTAL === 'admin') { if (['delivered', 'cancelled'].includes(o.status)) fail('This order can no longer be cancelled'); }
+      else if (o.customerId !== db.session.customerId || !['pending_payment', 'open'].includes(o.status)) fail('A driver is already on the way – please contact us to cancel');
+      setStatus(o, 'cancelled', { by: PORTAL });
+    },
+    acceptJob({ id }) {
+      const d = meDriver(), o = findOrder(id);
+      if (!d || d.status !== 'approved') fail('Driver is not approved or available');
+      if (!o || o.status !== 'open') fail('Job is no longer available');
+      o.claimedBy = o.claimedBy || [];
+      if (o.claimedBy.includes(d.id)) fail('You have already claimed this job once');
+      o.claimedBy.push(d.id); o.driverId = d.id; setStatus(o, 'assigned');
+    },
+    rejectJob({ id }) { const o = findOrder(id); if (!o.rejectedBy.includes(meDriver().id)) o.rejectedBy.push(meDriver().id); },
+    releaseJob({ id }) {
+      const d = meDriver(), o = findOrder(id);
+      if (o.driverId !== d.id) fail('Not your job');
+      if (o.status !== 'assigned') fail('The car is already picked up – contact support');
+      o.rejectedBy.push(d.id); o.driverId = ''; setStatus(o, 'open');
+    },
+    startDriving({ id }) {
+      const o = findOrder(id);
+      if (o.driverId !== meDriver().id) fail('Not your job');
+      if (o.status !== 'picked_up') fail('Record the pickup inspection first');
+      setStatus(o, 'in_transit');
+    },
+    recordInspection({ id, stage, data }) {
+      const d = meDriver(), o = findOrder(id);
+      if (!o || o.driverId !== d.id) fail('Not your job');
+      if (stage === 'pickup' && o.status !== 'assigned') fail('Pickup is already recorded');
+      if (stage === 'delivery' && !['picked_up', 'in_transit'].includes(o.status)) fail('Record the pickup first');
+      if (stage === 'delivery' && o.inspection.pickup && data.odometer_km < o.inspection.pickup.odo) fail('Odometer is lower than at pickup');
+      o.inspection[stage] = { at: now(), odo: data.odometer_km, fuel: data.fuel_level, keys: data.keys_count ?? null,
+        docs: !!data.documents_present, areas: data.areas, notes: data.notes, photos: data.photo_paths, person: data.person_name };
+      setStatus(o, stage === 'pickup' ? 'picked_up' : 'delivered');
+    },
+    setDriverStatus({ id, status }) {
+      const d = findDriver(id);
+      if (status === 'approved') {
+        if (!d.licenseExpiry || new Date(d.licenseExpiry) < new Date()) fail('Driving licence is missing or expired');
+        if (!d.dob || yearsSince(d.dob) < 20) fail('Driver must be at least 20 years old');
+      }
+      d.status = status;
+    },
+    assignDriver({ id, driverId }) {
+      const o = findOrder(id);
+      if (o.status !== 'open') fail('Order is no longer waiting for a driver');
+      o.claimedBy = o.claimedBy || [];
+      if (o.claimedBy.includes(driverId)) fail('This driver already had this job once – choose another driver');
+      o.claimedBy.push(driverId); o.driverId = driverId; setStatus(o, 'assigned', { by: 'admin' });
+    },
+    markRefunded({ id }) {
+      const o = findOrder(id);
+      if (o.status !== 'cancelled' || !o.payment || o.refundedAt) fail('Nothing to refund on this order');
+      o.refundedAt = now();
+    },
+    payDriver({ driverId }) {
+      const due = payoutsDue().filter(o => o.driverId === driverId);
+      if (!due.length) fail('Nothing to pay out for this driver');
+      due.forEach(o => { o.driverPaidAt = now(); });
+    },
+    updateSettings(s) { Object.assign(db.settings, s); },
+    updateCompany(c) { Object.assign(db.company, c); },
+    async seedDemo() {
+      const pw = await credentials('demo1234');
+      if (db.customers.some(c => c.email === 'demo@example.com')) fail('Demo data already loaded');
+      const c = { id: 'CUS-' + (++db.seq), createdAt: now(), name: 'Demo Customer', email: 'demo@example.com', phone: '+358 50 111 2222', company: 'Demo Oy', ...pw };
+      const mk = (name, mail, city, status) => ({ id: 'DRV-' + (++db.seq), createdAt: now(), status, name, email: mail, phone: '+358 40 000 0000',
+        city, dob: '1990-01-01', licenseNo: 'FI' + db.seq, licenseClass: 'B', licenseExpiry: '2032-12-31', iban: 'FI2112345600000785', licensePhoto: '', ...pw });
+      const d1 = mk('Mikko Virtanen', 'mikko@example.com', 'Helsinki', 'approved');
+      db.customers.push(c);
+      db.drivers.push(d1, mk('Aino Korhonen', 'aino@example.com', 'Tampere', 'pending'));
+      const okAreas = Object.fromEntries(AREAS.map(a => [a, 'OK']));
+      [['Helsinki', 'Tampere', 'Toyota Corolla', 'open'], ['Turku', 'Helsinki', 'Volvo XC60', 'delivered'], ['Espoo', 'Oulu', 'Tesla Model 3', 'in_transit']]
+        .forEach(([a, b, car, st]) => {
+          const o = { id: 'ZS-' + (++db.seq), createdAt: now(), customerId: c.id,
+            customer: { name: c.name, email: c.email, phone: c.phone, company: c.company },
+            pickup: { city: a, address: 'Esimerkkikatu 1', date: todayISO(), time: '10:00', contact: '' },
+            dropoff: { city: b, address: 'Testitie 5', contact: '' },
+            car: { model: car, plate: 'DEM-' + (db.seq % 1000), gearbox: 'Automatic', fuel: 'Hybrid' }, notes: '', price: priceFor(estimateKm(a, b)),
+            status: 'pending_payment', history: [{ status: 'pending_payment', at: now() }], driverId: '', rejectedBy: [], claimedBy: [], inspection: {},
+            payment: { method: 'card', last4: '4242', paidAt: now() } };
+          db.orders.push(o);
+          const flow = ['open', 'assigned', 'picked_up', 'in_transit', 'delivered'];
+          for (const s of flow.slice(0, flow.indexOf(st) + 1)) {
+            if (s === 'assigned') { o.driverId = d1.id; o.claimedBy.push(d1.id); }
+            if (s === 'picked_up') o.inspection.pickup = { at: now(), odo: 42000, fuel: 'Full', keys: 2, docs: true, notes: '', person: c.name, areas: { ...okAreas }, photos: [] };
+            if (s === 'delivered') o.inspection.delivery = { at: now(), odo: 42000 + o.price.km, fuel: '1/2', notes: 'All good', person: 'Reception', areas: { ...okAreas }, photos: [] };
+            setStatus(o, s);
+          }
+        });
+    },
+    resetAll() {
+      Object.assign(db, { orders: [], customers: [], drivers: [], session: { customerId: '', driverId: '', admin: true } });
+    }
+  };
+
+  // ---------- Supabase backend ----------
+  async function rpc(name, args) {
+    const { data, error } = await sb.rpc(name, args || {});
+    if (error) throw new Error(error.message || 'Server error');
+    return data;
+  }
+  async function refresh() {
+    const state = await rpc('get_app_state');
+    db = Object.assign(fresh(), state);
+  }
+  const loginUrl = portal => new URL(url(portal, 'login'), location.href).href;
+
+  const Remote = {
+    async signIn({ portal, email, password }) {
+      const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) fail(/confirm/i.test(error.message) ? 'Please confirm your email first (check your inbox)' : 'Wrong email or password');
+      await refresh();
+      if (!CURRENT[portal]()) {
+        await sb.auth.signOut();
+        fail(`This is not a ${PORTAL_LABEL[portal].toLowerCase()} account`);
+      }
+    },
+    async signUp({ role, email, password, data }) {
+      const { data: res, error } = await sb.auth.signUp({
+        email: email.trim(), password, options: { data: { ...data, role }, emailRedirectTo: loginUrl(role) }
+      });
+      if (error) fail(error.message);
+      if (!res.session) return { confirm: true };
+    },
+    adminSetup() { fail('Admins are created in Supabase'); },
+    async signOut() { await sb.auth.signOut(); },
+    async changePassword({ current, password }) {
+      const { data: { user } } = await sb.auth.getUser();
+      const check = await sb.auth.signInWithPassword({ email: user.email, password: current });
+      if (check.error) fail('Current password is wrong');
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) fail(error.message);
+    },
+    updateMyProfile: p => rpc('update_my_profile', { p }),
+    updateDriverProfile: p => rpc('update_driver_profile', { p }),
+    createOrder: p => rpc('create_order', { p }),
+    payOrder: ({ id, method, last4 }) => rpc('demo_pay_order', { p_order: uuidOf(id), p_method: method, p_last4: method === 'card' ? last4 : null }),
+    cancelOrder: ({ id }) => rpc('cancel_order', { p_order: uuidOf(id) }),
+    async acceptJob({ id }) {
+      const r = await rpc('accept_transfer', { p_order_id: uuidOf(id) });
+      if (!r || !r.success) fail((r && r.message) || 'Could not accept the job');
+    },
+    rejectJob: ({ id }) => rpc('reject_transfer', { p_order: uuidOf(id) }),
+    releaseJob: ({ id }) => rpc('release_transfer', { p_order: uuidOf(id) }),
+    startDriving: ({ id }) => rpc('start_transfer', { p_order: uuidOf(id) }),
+    recordInspection: ({ id, stage, data }) => rpc('record_inspection', { p_order: uuidOf(id), p_stage: stage, p: data }),
+    setDriverStatus: ({ id, status }) => rpc('admin_set_driver_status', { p_driver: id, p_status: status }),
+    assignDriver: ({ id, driverId }) => rpc('admin_assign_driver', { p_order: uuidOf(id), p_driver: driverId }),
+    markRefunded: ({ id }) => rpc('admin_mark_refunded', { p_order: uuidOf(id) }),
+    payDriver: ({ driverId }) => rpc('create_driver_payout', { p_driver: driverId, p_mark_paid: true }),
+    updateSettings: p => rpc('admin_update_settings', { p }),
+    updateCompany: p => rpc('admin_update_company', { p }),
+    seedDemo() { fail('Demo data is only available in local demo mode'); },
+    resetAll() { fail('Not available with Supabase'); }
+  };
+
+  async function act(name, args) {
+    const result = await (REMOTE ? Remote : Local)[name](args || {});
+    if (REMOTE) await refresh(); else save();
+    return result;
+  }
+
+  // ================= Form handlers =================
+  const FORMS = {
+    async customerSignIn(f, d) {
+      await act('signIn', { portal: 'customer', email: d.email, password: d.password });
+      go('customer', nextPage('customer'));
+    },
+    async customerRegister(f, d) {
+      const r = await act('signUp', { role: 'customer', email: d.email, password: d.password,
+        data: { full_name: d.name.trim(), phone: d.phone.trim(), company: d.company.trim() } });
+      if (r && r.confirm) { f.reset(); return confirmEmailNotice(d.email); }
+      go('customer', 'create-order', null, 'Account created – welcome!');
+    },
+    async customerProfile(f, d) {
+      await act('updateMyProfile', { name: d.name.trim(), phone: d.phone.trim(), company: d.company.trim() });
+      toast('Saved'); render();
+    },
+    async orderForm(f, d) {
+      const r = await act('createOrder', {
+        pickup_city: d.fromCity, pickup_address: d.fromAddr.trim(), pickup_date: d.date, pickup_time: d.time, pickup_contact: d.fromContact.trim(),
+        dropoff_city: d.toCity, dropoff_address: d.toAddr.trim(), dropoff_contact: d.toContact.trim(),
+        car_model: d.car.trim(), car_plate: d.plate.trim().toUpperCase(), gearbox: d.gearbox, fuel: d.fuel, notes: d.notes.trim()
+      });
+      f.reset(); refreshQuote();
+      paymentModal(r.id);
+    },
+    async payForm(f, d) {
+      let last4 = null;
+      if (d.method === 'card') {
+        const num = (d.card || '').replace(/\D/g, '');
+        const m = /^(\d{2})\s*\/\s*(\d{2})$/.exec(d.exp || '');
+        if (!luhn(num)) return toast('Invalid card number');
+        if (!m || +m[1] < 1 || +m[1] > 12 || new Date(2000 + +m[2], +m[1]) < new Date()) return toast('Invalid expiry date');
+        if (!/^\d{3,4}$/.test(d.cvc || '')) return toast('Invalid CVC');
+        last4 = num.slice(-4);
+      }
+      await act('payOrder', { id: d.id, method: d.method, last4 });
+      const o = findOrder(d.id);
+      render();
+      openModal(`
+        <h2>✅ Booking confirmed</h2>
+        <p>Thank you, ${esc(o.customer.name)}. Your transfer <b>${esc(o.id)}</b> is booked and paid.</p>
+        <p class="muted">Pickup ${esc(o.pickup.date)} at ${esc(o.pickup.time)} from ${esc(o.pickup.address)}, ${esc(o.pickup.city)}.
+        We'll notify you when a driver is assigned.</p>
+        <div class="row"><button class="btn" data-invoice="${esc(o.id)}">View invoice</button><span class="spacer"></span>
+          <a class="btn primary" href="${url('customer', 'tracking', { id: o.id })}">Track order</a></div>`);
+    },
+    async driverSignIn(f, d) {
+      await act('signIn', { portal: 'driver', email: d.email, password: d.password });
+      go('driver', nextPage('driver'));
+    },
+    async driverRegister(f, d) {
+      if (yearsSince(d.dob) < 20) return toast('Drivers must be at least 20 years old');
+      if (new Date(d.licenseExpiry) < new Date()) return toast('Driving licence has expired');
+      if (!validIban(d.iban)) return toast('Invalid IBAN');
+      const r = await act('signUp', { role: 'driver', email: d.email, password: d.password, data: {
+        full_name: d.name.trim(), phone: d.phone.trim(), home_city: d.city, date_of_birth: d.dob,
+        license_number: d.licenseNo.trim(), license_class: d.licenseClass, license_expiry: d.licenseExpiry,
+        iban: d.iban, license_photo_path: f.licensePhoto.files[0] ? f.licensePhoto.files[0].name : '' } });
+      if (r && r.confirm) { f.reset(); return confirmEmailNotice(d.email); }
+      go('driver', 'profile', null, 'Registration submitted – awaiting verification');
+    },
+    async driverProfile(f, d) {
+      if (!validIban(d.iban)) return toast('Invalid IBAN');
+      await act('updateDriverProfile', { phone: d.phone.trim(), city: d.city, iban: d.iban });
+      toast('Saved'); render();
+    },
+    async driverPassword(f, d) { await act('changePassword', { portal: 'driver', current: d.current, password: d.password }); toast('Password changed'); f.reset(); },
+    async adminPassword(f, d) { await act('changePassword', { portal: 'admin', current: d.current, password: d.password }); toast('Password changed'); f.reset(); },
+    async inspectionForm(f, d) {
+      const stage = d.stage;
+      await act('recordInspection', { id: d.id, stage, data: {
+        odometer_km: +d.odo, fuel_level: d.fuel, notes: d.notes.trim(), person_name: d.person.trim(),
+        areas: Object.fromEntries(AREAS.map((a, i) => [a, d['area' + i]])),
+        photo_paths: [...f.photos.files].map(x => x.name),
+        ...(stage === 'pickup' ? { keys_count: +d.keys, documents_present: !!d.docs } : {}) } });
+      const o = findOrder(d.id);
+      if (stage === 'pickup') go('driver', 'navigation', { order: o.id }, 'Pickup recorded – drive safely!');
+      else go('driver', 'earnings', null, `Delivered – ${eur(driverPay(o))} added to your earnings`);
+    },
+    async adminSetup(f, d) {
+      if (d.password !== d.password2) return toast('Passwords do not match');
+      await act('adminSetup', { email: d.email, password: d.password });
+      go('admin', 'dashboard', null, 'Admin account created');
+    },
+    async adminSignIn(f, d) {
+      await act('signIn', { portal: 'admin', email: d.email, password: d.password });
+      go('admin', nextPage('admin'));
+    },
+    async pricingForm(f, d) {
+      await act('updateSettings', Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(k => [k, +d[k]])));
+      toast('Pricing saved'); render();
+    },
+    async companyForm(f, d) {
+      await act('updateCompany', Object.fromEntries(Object.keys(DEFAULT_COMPANY).map(k => [k, d[k].trim()])));
+      toast('Company details saved');
+    }
+  };
 
   // ================= Shell, routing & events =================
   const PAGES = { public: PUBLIC, customer: CUSTOMER, driver: DRIVER, admin: ADMIN };
@@ -924,13 +1134,22 @@
     refreshQuote(); updateQuickQuote();
   }
 
-  // Pages that only display data re-render when another tab changes it; pages with forms keep the user's input.
+  // Display-only pages update when data changes elsewhere; pages with forms keep the user's input.
   const LIVE = ['dashboard', 'tracking', 'available-jobs', 'my-jobs', 'earnings', 'drivers', 'customers', 'orders', 'payments'];
-  window.addEventListener('storage', e => {
-    if (e.key !== KEY) return;
-    db = load();
-    if (LIVE.includes(PAGE) && !modal.open) render();
-  });
+  const canAutoRefresh = () => LIVE.includes(PAGE) && !modal.open && !(document.activeElement && document.activeElement.closest('form'));
+  if (!REMOTE) {
+    window.addEventListener('storage', e => {
+      if (e.key !== KEY) return;
+      db = load();
+      if (canAutoRefresh()) render();
+    });
+  }
+
+  // Run an async UI action: disable the button while it runs, show errors as a toast.
+  async function run(button, fn) {
+    if (button) button.disabled = true;
+    try { await fn(); } catch (err) { toast(err.message || 'Something went wrong'); } finally { if (button) button.disabled = false; }
+  }
 
   document.addEventListener('change', e => {
     const t = e.target;
@@ -938,84 +1157,80 @@
     if (t.closest('#quickQuote')) updateQuickQuote();
     if (t.matches('select[data-goto]') && t.value) location.href = t.value;
     if (t.dataset.assign && t.value) {
-      const o = findOrder(t.dataset.assign);
-      if (o.status !== 'awaiting_driver') return toast('Order is no longer waiting for a driver');
-      o.driverId = t.value; setStatus(o, 'assigned', { by: 'admin' });
-      toast(`${o.id} assigned to ${findDriver(t.value).name}`); render();
+      run(t, async () => {
+        await act('assignDriver', { id: t.dataset.assign, driverId: t.value });
+        toast(`${t.dataset.assign} assigned to ${(findDriver(t.value) || {}).name || 'driver'}`);
+      }).then(render);
     }
   });
 
-  const FORMS = {
-    customerSignIn, customerRegister, customerProfile, orderForm: submitOrder, payForm: submitPayment,
-    driverSignIn, driverRegister, driverProfile, inspectionForm: submitInspection,
-    driverPassword: (f, d) => changePassword(findDriver(db.session.driverId), d),
-    adminSetup, adminSignIn,
-    adminPassword: (f, d) => changePassword(db.admin, d),
-    pricingForm(f, d) { for (const k of Object.keys(DEFAULT_SETTINGS)) db.settings[k] = +d[k]; save(); toast('Pricing saved'); render(); },
-    companyForm(f, d) { for (const k of Object.keys(DEFAULT_COMPANY)) db.company[k] = d[k].trim(); save(); toast('Company details saved'); }
-  };
   document.addEventListener('submit', e => {
     const f = e.target, handler = FORMS[f.getAttribute('id')];
     if (!handler) return;
     e.preventDefault();
-    Promise.resolve(handler(f, formData(f))).catch(err => toast('Error: ' + err.message));
+    run(f.querySelector('button[type=submit], button:not([type])'), () => handler(f, formData(f)));
   });
 
   document.addEventListener('click', e => {
     const t = e.target.closest('button'); if (!t) return;
     const ds = t.dataset;
-    const driver = findDriver(db.session.driverId);
     if (ds.pay) return paymentModal(ds.pay);
     if (ds.invoice) return invoiceModal(ds.invoice);
     if (ds.detail) return orderDetail(ds.detail);
+    const action = (name, args, msg, after) => run(t, async () => {
+      await act(name, args);
+      if (msg) toast(msg);
+      after ? after() : render();
+    });
     if (ds.cancel) {
       const o = findOrder(ds.cancel);
-      const allowed = PORTAL === 'admin' ? !['delivered', 'cancelled'].includes(o.status)
-        : o.customerId === db.session.customerId && ['pending_payment', 'awaiting_driver'].includes(o.status);
-      if (!allowed) return toast('This order can no longer be cancelled');
       if (!confirm(`Cancel order ${o.id}?${o.payment ? ' The payment will be refunded.' : ''}`)) return;
-      setStatus(o, 'cancelled', { by: PORTAL }); toast('Order cancelled'); return render();
+      return action('cancelOrder', { id: o.id }, 'Order cancelled');
     }
-    if (ds.accept) {
-      const o = findOrder(ds.accept);
-      if (!driver || driver.status !== 'verified') return toast('Only verified drivers can accept jobs');
-      if (o.status !== 'awaiting_driver') { toast('Job no longer available'); return render(); }
-      o.driverId = driver.id; setStatus(o, 'assigned', { by: driver.id });
-      return go('driver', 'my-jobs', null, 'Job accepted');
-    }
-    if (ds.reject) { findOrder(ds.reject).rejectedBy.push(driver.id); save(); toast('Job hidden'); return render(); }
+    if (ds.accept) return action('acceptJob', { id: ds.accept }, null, () => go('driver', 'my-jobs', null, 'Job accepted'));
+    if (ds.reject) return action('rejectJob', { id: ds.reject }, 'Job hidden');
     if (ds.release) {
-      const o = findOrder(ds.release);
-      if (o.driverId !== driver.id || o.status !== 'assigned') return;
       if (!confirm('Release this job back to other drivers?')) return;
-      o.rejectedBy.push(driver.id); o.driverId = ''; setStatus(o, 'awaiting_driver', { released: driver.id });
-      toast('Job released'); return render();
+      return action('releaseJob', { id: ds.release }, 'Job released');
     }
-    if (ds.startDrive) {
-      const o = findOrder(ds.startDrive);
-      if (o.driverId !== driver.id || o.status !== 'picked_up') return;
-      setStatus(o, 'in_transit'); toast('Status: in transit'); return render();
-    }
-    if (ds.driverStatus) { findDriver(ds.id).status = ds.driverStatus; save(); toast('Driver ' + DRIVER_STATUS[ds.driverStatus][0].toLowerCase()); return render(); }
-    if (ds.refund) { findOrder(ds.refund).refundedAt = now(); save(); toast('Marked refunded'); return render(); }
+    if (ds.startDrive) return action('startDriving', { id: ds.startDrive }, 'Status: in transit');
+    if (ds.driverStatus) return action('setDriverStatus', { id: ds.id, status: ds.driverStatus }, 'Driver ' + DRIVER_STATUS[ds.driverStatus][0].toLowerCase());
+    if (ds.refund) return action('markRefunded', { id: ds.refund }, 'Marked refunded');
     if (ds.payout) {
       const due = payoutsDue().filter(o => o.driverId === ds.payout);
       if (!confirm(`Mark ${eur(due.reduce((s, o) => s + driverPay(o), 0))} as paid to ${findDriver(ds.payout).name}?`)) return;
-      due.forEach(o => { o.driverPaidAt = now(); }); save(); toast('Payout recorded'); return render();
+      return action('payDriver', { driverId: ds.payout }, 'Payout recorded');
     }
-    if (t.id === 'signOut') {
-      if (PORTAL === 'customer') db.session.customerId = '';
-      if (PORTAL === 'driver') db.session.driverId = '';
-      if (PORTAL === 'admin') db.session.admin = false;
-      save(); return go(PORTAL, 'login');
-    }
-    if (t.id === 'seedDemo') return seedDemo();
-    if (t.id === 'resetAll' && confirm('Delete all orders, customers and drivers? Settings and the admin account are kept.')) {
-      Object.assign(db, { orders: [], customers: [], drivers: [], session: { customerId: '', driverId: '', admin: true } });
-      save(); toast('Data deleted'); return render();
-    }
+    if (t.id === 'signOut') return action('signOut', { portal: PORTAL }, null, () => go(PORTAL, 'login'));
+    if (t.id === 'seedDemo') return action('seedDemo', {}, 'Demo data loaded');
+    if (t.id === 'resetAll' && confirm('Delete all orders, customers and drivers? Settings and the admin account are kept.')) return action('resetAll', {}, 'Data deleted');
   });
 
-  render();
-  showFlash();
+  // ================= Start =================
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('Could not load ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function start() {
+    if (REMOTE) {
+      $('#app').innerHTML = '<div class="card empty">Loading…</div>';
+      try {
+        if (!window.supabase) await loadScript(SUPABASE_JS);
+        sb = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+        await refresh();
+      } catch (err) {
+        $('#app').innerHTML = empty('Could not connect to the server. Please try again later.', `<span class="muted">${esc(err.message)}</span>`);
+        return;
+      }
+      setInterval(() => { if (canAutoRefresh()) refresh().then(render).catch(() => {}); }, 15000);
+    }
+    render();
+    showFlash();
+  }
+
+  start();
 })();
