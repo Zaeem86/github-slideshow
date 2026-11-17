@@ -118,7 +118,8 @@
   const findDriver = id => db.drivers.find(d => d.id === id);
   const findCustomer = id => db.customers.find(c => c.id === id);
   const uuidOf = id => { const o = findOrder(id); if (!o) throw new Error('Order not found'); return o.uuid; };
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  // Today's date in Finland (the database checks pickup dates in Europe/Helsinki time).
+  const todayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Helsinki' }).format(new Date());
   const yearsSince = iso => (Date.now() - new Date(iso)) / 31557600000;
   const validIban = s => /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(String(s).replace(/\s/g, '').toUpperCase());
 

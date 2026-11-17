@@ -39,12 +39,12 @@ select test.ok((select home_city is null and date_of_birth is null from driver_p
 -- ---- customer
 reset role; select set_config('request.jwt.claim.sub', :'c1', false) \g /dev/null
 set role authenticated;
-select public.create_order(format('{"pickup_city":"Helsinki","pickup_address":"Mannerheimintie 1","pickup_date":"%s","pickup_time":"09:00","dropoff_city":"Oulu","dropoff_address":"Kauppurienkatu 2","car_model":"Volvo V60","car_plate":"abc-123"}', current_date + 1)::jsonb)->>'uuid' as o1 \gset
-select public.create_order(format('{"pickup_city":"Turku","pickup_address":"A 1","pickup_date":"%s","dropoff_city":"Turku","dropoff_address":"B 2","car_model":"Golf","car_plate":"X-1","pickup_contact":"Secret Person 040"}', current_date)::jsonb)->>'uuid' as o2 \gset
-select public.create_order(format('{"pickup_city":"Espoo","pickup_address":"A","pickup_date":"%s","dropoff_city":"Lahti","dropoff_address":"B","car_model":"Golf","car_plate":"Y-1"}', current_date)::jsonb)->>'uuid' as o3 \gset
+select public.create_order(format('{"pickup_city":"Helsinki","pickup_address":"Mannerheimintie 1","pickup_date":"%s","pickup_time":"09:00","dropoff_city":"Oulu","dropoff_address":"Kauppurienkatu 2","car_model":"Volvo V60","car_plate":"abc-123"}', (now() at time zone 'Europe/Helsinki')::date + 1)::jsonb)->>'uuid' as o1 \gset
+select public.create_order(format('{"pickup_city":"Turku","pickup_address":"A 1","pickup_date":"%s","dropoff_city":"Turku","dropoff_address":"B 2","car_model":"Golf","car_plate":"X-1","pickup_contact":"Secret Person 040"}', (now() at time zone 'Europe/Helsinki')::date)::jsonb)->>'uuid' as o2 \gset
+select public.create_order(format('{"pickup_city":"Espoo","pickup_address":"A","pickup_date":"%s","dropoff_city":"Lahti","dropoff_address":"B","car_model":"Golf","car_plate":"Y-1"}', (now() at time zone 'Europe/Helsinki')::date)::jsonb)->>'uuid' as o3 \gset
 select test.ok((select distance_km = 620 and price_net_cents = 4900 + 95*620 and price_total_cents = price_net_cents + round(price_net_cents*0.255) from orders where id = :'o1'), 'server price Helsinki-Oulu 620 km matches website formula');
 select test.ok((select distance_km = 15 and price_net_cents = 7900 from orders where id = :'o2'), 'same-city uses minimum price');
-select test.err(format('select public.create_order(%L)', format('{"pickup_city":"Helsinki","pickup_address":"A","pickup_date":"%s","dropoff_city":"Oulu","dropoff_address":"B","car_model":"x","car_plate":"y"}', current_date - 1)), 'today or later', 'past pickup date rejected');
+select test.err(format('select public.create_order(%L)', format('{"pickup_city":"Helsinki","pickup_address":"A","pickup_date":"%s","dropoff_city":"Oulu","dropoff_address":"B","car_model":"x","car_plate":"y"}', (now() at time zone 'Europe/Helsinki')::date - 1)), 'today or later', 'past pickup date rejected');
 select test.err($q$select public.create_order('{"pickup_city":"Paris","pickup_address":"A","pickup_date":"2099-01-01","dropoff_city":"Oulu","dropoff_address":"B","car_model":"x","car_plate":"y"}')$q$, 'unknown pickup city', 'unknown city rejected');
 select public.demo_pay_order(:'o1', 'card', '4242') \g /dev/null
 select public.demo_pay_order(:'o2', 'mobilepay') \g /dev/null
