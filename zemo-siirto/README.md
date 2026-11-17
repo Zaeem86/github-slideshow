@@ -2,7 +2,12 @@
 
 *Your car. Our driver. Your destination.* – Auton siirto Suomessa, luotettavasti.
 
-Open `index.html` in a browser (no build step, no backend). Data is stored in the browser's localStorage.
+Two separate sites share the same data:
+
+- `index.html` – customer site (+ Admin)
+- `driver/index.html` – driver portal, a standalone page
+
+Open them in a browser (no build step, no backend). Data is stored in the browser's localStorage.
 
 ## Customer platform
 - Create a car transfer request (route, date, vehicle, notes)

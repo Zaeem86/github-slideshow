@@ -264,7 +264,7 @@
   function orderSummary(o, opts = {}) {
     const d = findDriver(o.driverId);
     return `
-      <div class="row"><h2 style="margin:0">${esc(o.id)}</h2>${badge(o.status)}<span class="spacer"></span><b>${eur(o.price.total)}</b></div>
+      <div class="row"><h2 style="margin:0">${esc(o.id)}</h2>${badge(o.status)}<span class="spacer"></span>${opts.hidePrice ? '' : `<b>${eur(o.price.total)}</b>`}</div>
       <div class="grid" style="margin-top:10px">
         <div><div class="muted">Pickup</div>${esc(o.pickup.address)}, ${esc(o.pickup.city)}<br>${esc(o.pickup.date)} ${esc(o.pickup.time)}</div>
         <div><div class="muted">Delivery</div>${esc(o.dropoff.address)}, ${esc(o.dropoff.city)}</div>
@@ -402,7 +402,7 @@
   }
 
   function jobCard(o, actions) {
-    return `<div class="card">${orderSummary(o)}
+    return `<div class="card">${orderSummary(o, { hidePrice: true, driverPhone: false })}
       <div class="row" style="margin-top:10px"><span class="muted">${o.price.km} km · driver pay</span><b>${eur(driverPay(o))}</b></div>
       ${o.notes ? `<p class="notice">${esc(o.notes)}</p>` : ''}
       <div class="row" style="margin-top:10px">${actions}</div></div>`;
@@ -570,16 +570,29 @@
     return `<div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${key}:${k}" class="${ui[key] === k ? 'active' : ''}">${esc(l)}</button>`).join('')}</div>`;
   }
 
+  // Each page can be locked to one portal via <body data-portal="driver">.
+  const PORTAL = document.body.dataset.portal || '';
+  function currentRole() {
+    if (PORTAL) return PORTAL;
+    return db.session.role === 'admin' ? 'admin' : 'customer';
+  }
+
   function render() {
-    const role = db.session.role;
+    const role = currentRole();
     document.querySelectorAll('nav.roles button').forEach(b => b.classList.toggle('active', b.dataset.role === role));
     $('#app').innerHTML = role === 'driver' ? driverView() : role === 'admin' ? adminView() : customerView();
     if (role === 'customer' && ui.customerTab === 'new') refreshQuote();
   }
 
-  document.querySelector('nav.roles').addEventListener('click', e => {
+  document.querySelector('nav.roles')?.addEventListener('click', e => {
     const b = e.target.closest('button[data-role]'); if (!b) return;
     db.session.role = b.dataset.role; save(); render();
+  });
+
+  // Keep pages open in different tabs (customer site, driver site) in sync.
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY || !e.newValue) return;
+    try { db = JSON.parse(e.newValue); db.settings = { ...DEFAULT_SETTINGS, ...db.settings }; render(); } catch (err) { /* ignore */ }
   });
 
   document.addEventListener('change', e => {

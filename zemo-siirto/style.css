@@ -98,3 +98,6 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .invoice, .invoice * { visibility: visible; }
   .invoice { position: absolute; left: 0; top: 0; width: 100%; }
 }
+.driver-link { margin-left: auto; text-decoration: none; white-space: nowrap; }
+.driver-link + nav.roles { margin-left: 0; }
+@media (max-width: 600px) { .driver-link { margin-left: auto; } }
