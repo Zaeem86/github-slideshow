@@ -16,17 +16,17 @@
 html, body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent); }
-header.top { position: sticky; top: 0; z-index: 5; background: rgba(11,13,16,.92);
+header.top { position: sticky; top: 0; z-index: 5; background: rgba(11,13,16,.94);
   backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
-.top .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
-.brand { font-weight: 800; letter-spacing: .5px; font-size: 18px; }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding-top: 10px; padding-bottom: 10px; }
+.brand { font-weight: 800; letter-spacing: .5px; font-size: 18px; color: var(--text); text-decoration: none; }
 .brand small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; letter-spacing: 0; }
-nav.roles { margin-left: auto; display: flex; gap: 4px; background: var(--panel);
-  border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
-nav.roles button { background: none; border: 0; color: var(--muted); padding: 6px 14px;
-  border-radius: 999px; cursor: pointer; font: inherit; }
-nav.roles button.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.who { font-size: 13px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pagenav { width: 100%; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.pagenav a { flex: none; padding: 7px 12px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 14px; }
+.pagenav a:hover { color: var(--text); background: var(--panel); }
+.pagenav a.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .hero { padding: 28px 0 8px; }
 .hero h1 { margin: 0 0 4px; font-size: 26px; }
 .hero p { margin: 0; color: var(--muted); font-style: italic; }
@@ -88,16 +88,26 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .invoice table th, .invoice table td { border-color: #ddd; color: #111; }
 .invoice .muted { color: #555; }
 .notice { font-size: 13px; color: var(--muted); border-left: 3px solid var(--warn); padding-left: 10px; margin: 10px 0; }
-@media (max-width: 600px) {
-  .top .wrap { height: auto; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
-  nav.roles { margin-left: 0; width: 100%; justify-content: space-between; }
-  nav.roles button { flex: 1; padding: 6px 4px; }
-}
+/* layout helpers */
+.mt { margin-top: 12px; } .mb { margin-bottom: 12px; } .m0 { margin: 0 !important; } .auto { width: auto; }
+.center { text-align: center; } .upper { text-transform: uppercase; }
+.card > label, form > label { margin-top: 12px; }
+label.check { display: flex; gap: 8px; align-items: flex-start; color: var(--text); font-size: 14px; }
+label.check input { width: auto; margin-top: 3px; }
+.grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+.grid2 .card { margin: 0; }
+.narrow { max-width: 440px; margin-left: auto; margin-right: auto; }
+a.btn { text-decoration: none; }
+.hero.big { padding: 40px 0 24px; }
+.hero.big h1 { font-size: clamp(30px, 6vw, 48px); line-height: 1.1; margin: 14px 0 10px; }
+.hero.big p { font-style: normal; max-width: 560px; }
+.big-addr { font-size: 20px; font-weight: 700; margin: 12px 0; }
+iframe.map { width: 100%; height: 320px; border: 0; border-radius: 10px; background: var(--panel-2); }
+ul.todo { margin: 0; padding-left: 18px; } ul.todo li { margin: 6px 0; }
+td .row { flex-wrap: nowrap; }
 @media print {
   body * { visibility: hidden; }
   .invoice, .invoice * { visibility: visible; }
   .invoice { position: absolute; left: 0; top: 0; width: 100%; }
 }
-.driver-link { margin-left: auto; text-decoration: none; white-space: nowrap; }
-.driver-link + nav.roles { margin-left: 0; }
-@media (max-width: 600px) { .driver-link { margin-left: auto; } }
+.row.nowrap { flex-wrap: nowrap; }
