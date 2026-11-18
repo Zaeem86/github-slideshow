@@ -63,8 +63,8 @@ Customer creates order → pays → driver accepts (`accept_transfer`) → **pic
 
 ## Tests
 
-- `../zemo-siirto-web/supabase/tests/run_local.sh` – 47 SQL checks (roles, RLS, pricing, race rules, earnings, payouts) on a throwaway Postgres.
+- `../zemo-siirto-web/tests/sql/run_local.sh` – SQL checks (roles, RLS, pricing, race rules, earnings, payouts) on a throwaway Postgres.
 - `tests/e2e.js` – full browser walkthrough of all three portals (Playwright):
   - local mode: serve this folder (`python3 -m http.server 8765`) → `node tests/e2e.js http://localhost:8765/ local`
-  - Supabase mode against the real SQL: start Postgres with `../zemo-siirto-web/supabase/tests/local_supabase_stub.sql` + the migrations,
-    then, inside `../zemo-siirto-web/` after `npm install`: `node supabase/tests/fake-supabase/server.js 8790 ../zemo-siirto` → `node tests/e2e.js http://localhost:8790/ remote`
+  - Supabase mode against the real SQL: start Postgres with `../zemo-siirto-web/tests/sql/local_supabase_stub.sql` + the migrations,
+    then, inside `../zemo-siirto-web/` after `npm install`: `node tests/mocks/fake-supabase/server.js 8790 ../zemo-siirto` → `node tests/e2e.js http://localhost:8790/ remote`

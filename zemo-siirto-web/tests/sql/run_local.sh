@@ -11,7 +11,7 @@ trap '"$BIN/pg_ctl" -D "$TMP/data" stop -m fast >/dev/null 2>&1 || true; rm -rf 
 "$BIN/pg_ctl" -D "$TMP/data" -o "-p $PORT -k $TMP" -l "$TMP/log" start >/dev/null
 PSQL="psql -X -q -v ON_ERROR_STOP=1 -h $TMP -p $PORT -d postgres"
 $PSQL -f "$HERE/local_supabase_stub.sql"
-for f in "$HERE"/../migrations/*.sql; do $PSQL -f "$f" >/dev/null; done
+for f in "$HERE"/../../supabase/migrations/*.sql; do $PSQL -f "$f" >/dev/null; done
 OUT="$($PSQL -f "$HERE/api_test.sql")"
 echo "$OUT"
 echo "---"; echo "$(grep -c '^PASS' <<<"$OUT") passed, $(grep -c '^FAIL' <<<"$OUT" || true) failed"

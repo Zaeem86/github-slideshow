@@ -1,0 +1,53 @@
+name: zemo-siirto-web
+
+on:
+  push:
+    paths: ["zemo-siirto-web/**", ".github/workflows/zemo-siirto-web.yml"]
+  pull_request:
+    paths: ["zemo-siirto-web/**", ".github/workflows/zemo-siirto-web.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zemo-siirto-web-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: zemo-siirto-web
+
+jobs:
+  check:
+    name: Type check, lint, build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: zemo-siirto-web/package-lock.json }
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: build-only
+
+  database:
+    name: SQL checks (migrations, roles, RLS, payments)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/sql/run_local.sh
+
+  e2e:
+    name: Browser end-to-end (all portals + Trustly payments)
+    runs-on: ubuntu-24.04
+    needs: [check, database]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: zemo-siirto-web/package-lock.json }
+      - run: npm ci
+      - name: Install Playwright (test only, not an app dependency)
+        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - run: bash tests/run_e2e.sh

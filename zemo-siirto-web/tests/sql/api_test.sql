@@ -1,5 +1,5 @@
 -- Self-checking tests. Run on a scratch database after local_supabase_stub.sql and all migrations:
---   psql -f local_supabase_stub.sql && for f in ../migrations/*.sql; do psql -f $f; done && psql -f api_test.sql
+--   psql -f local_supabase_stub.sql && for f in ../../supabase/migrations/*.sql; do psql -f $f; done && psql -f api_test.sql
 -- Every check prints PASS or FAIL.
 \set QUIET on
 \pset tuples_only on

@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && eslint",
+    "test:sql": "bash tests/sql/run_local.sh",
+    "test:e2e": "node tests/e2e.js",
+    "test:e2e:payments": "node tests/e2e-payments.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
@@ -26,5 +31,8 @@
     "pg": "^8.11.3",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.9"
   }
 }

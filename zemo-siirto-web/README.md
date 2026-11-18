@@ -23,7 +23,12 @@ own car from pickup to destination – not vehicle transport by truck.
 - **Order flow:** create order → pay → driver accepts (`accept_transfer`) → pickup inspection → start driving →
   delivery inspection (`complete_transfer` books the driver's earnings) → admin pays out (`create_driver_payout`).
 
-## Setup
+## Deploy
+
+Step-by-step guide (Arabic): **[DEPLOY.md](DEPLOY.md)** – Supabase project, Vercel (root directory `zemo-siirto-web`,
+region Stockholm), domain, first admin, Trustly. After deploying, `GET /api/health` must return `"ok": true`.
+
+## Setup (local development)
 
 1. Node.js 20.9+ → `npm install`
 2. Create a Supabase project (EU region) and run the migrations **in order** (SQL Editor, or `supabase db push`):
@@ -75,22 +80,22 @@ To go live:
 | What | Command |
 |---|---|
 | Type check / lint / build | `npx tsc --noEmit` · `npm run lint` · `npm run build` |
-| 66 SQL checks (roles, RLS, pricing, race rules, earnings, payouts, payments, refunds) | `bash supabase/tests/run_local.sh` (needs local Postgres; run as a non-root user) |
-| Browser end-to-end, all three portals | see below |
+| 66 SQL checks (roles, RLS, pricing, race rules, earnings, payouts, payments, refunds) | `bash tests/sql/run_local.sh` (needs local Postgres; run as a non-root user) |
+| Browser end-to-end, all portals + Trustly payments | `bash tests/run_e2e.sh` (starts everything below; also runs in GitHub Actions) |
 
 End-to-end against the real SQL, with the real `@supabase/ssr` client:
 
-1. Start a throwaway Postgres; run `supabase/tests/local_supabase_stub.sql`, then the three migrations.
-2. `PGHOST=… PGPORT=… PGUSER=… PGDATABASE=… node supabase/tests/fake-supabase/server.js 8790` –
+1. Start a throwaway Postgres; run `tests/sql/local_supabase_stub.sql`, then the migrations in order.
+2. `PGHOST=… PGPORT=… PGUSER=… PGDATABASE=… node tests/mocks/fake-supabase/server.js 8790` –
    a local stand-in for Supabase Auth + REST (testing only, never deploy).
 3. `NEXT_PUBLIC_SUPABASE_URL=http://localhost:8790 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=anon npm run build && npx next start -p 3100`
 4. `node tests/e2e.js http://localhost:3100 http://localhost:8790` (Playwright)
 
-Payments end-to-end with the mock Trustly (`supabase/tests/fake-trustly/server.js`, testing only):
+Payments end-to-end with the mock Trustly (`tests/mocks/fake-trustly/server.js`, testing only):
 
 1. Create two key pairs (merchant, trustly) with the `openssl` commands above.
 2. Start the Supabase stand-in with `FAKE_SERVICE_KEY=service-secret`, and the mock:
-   `node supabase/tests/fake-trustly/server.js 8791 merchant.pub trustly.key zemo-test test-pass`
+   `node tests/mocks/fake-trustly/server.js 8791 merchant.pub trustly.key zemo-test test-pass`
 3. Start the app with `SUPABASE_SERVICE_ROLE_KEY=service-secret APP_URL=http://localhost:3100 TRUSTLY_API_URL=http://localhost:8791/api/1
    TRUSTLY_USERNAME=zemo-test TRUSTLY_PASSWORD=test-pass TRUSTLY_PRIVATE_KEY="$(cat merchant.key)" TRUSTLY_PUBLIC_KEY="$(cat trustly.pub)"`
 4. `node tests/e2e-payments.js http://localhost:3100 http://localhost:8790 http://localhost:8791`

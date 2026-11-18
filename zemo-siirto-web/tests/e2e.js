@@ -1,5 +1,5 @@
 // End-to-end test of the Next.js app in a real browser (Playwright), against the real SQL
-// through supabase/tests/fake-supabase/server.js. See README → Tests.
+// through tests/mocks/fake-supabase/server.js. See README → Tests.
 //
 //   node tests/e2e.js <app-url> <fake-supabase-url>
 //

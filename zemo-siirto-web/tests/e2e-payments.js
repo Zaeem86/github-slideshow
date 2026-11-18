@@ -1,5 +1,5 @@
 // End-to-end test of real bank payments (Trustly) using the mock Trustly in
-// supabase/tests/fake-trustly/server.js. See README → Tests.
+// tests/mocks/fake-trustly/server.js. See README → Tests.
 //
 //   node tests/e2e-payments.js <app-url> <fake-supabase-url> <mock-trustly-url>
 const { chromium } = require("playwright");
