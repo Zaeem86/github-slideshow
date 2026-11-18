@@ -6,7 +6,7 @@ import { dt, eur } from "@/lib/domain";
 import { getState } from "@/lib/state";
 
 export const metadata: Metadata = { title: "Invoice" };
-const METHODS = { card: "Card", mobilepay: "MobilePay", invoice: "Invoice, 14 days net" } as const;
+const METHODS = { card: "Card", mobilepay: "MobilePay", invoice: "Invoice, 14 days net", trustly: "Bank payment (Trustly)" } as const;
 
 // Visible to the order's customer and to admins (get_app_state only returns orders the user may see).
 export default async function Invoice({ params }: { params: Promise<{ id: string }> }) {

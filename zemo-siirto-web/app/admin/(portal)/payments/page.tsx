@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { markRefunded, payDriver } from "@/app/actions";
+import { markRefunded, payDriver, refundViaTrustly } from "@/app/actions";
 import { ActionButton, AutoRefresh } from "@/components/client";
 import { Flash, Stat } from "@/components/ui";
 import { driverPay, dt, eur, mask } from "@/lib/domain";
@@ -8,7 +8,7 @@ import { requireAdmin, type SearchParams } from "@/lib/state";
 
 export const metadata: Metadata = { title: "Payments" };
 const HERE = "/admin/payments";
-const METHODS = { card: "Card", mobilepay: "MobilePay", invoice: "Invoice" } as const;
+const METHODS = { card: "Card", mobilepay: "MobilePay", invoice: "Invoice", trustly: "Trustly" } as const;
 
 export default async function Payments({ searchParams }: { searchParams: SearchParams }) {
   const { s } = await requireAdmin();
@@ -39,7 +39,11 @@ export default async function Payments({ searchParams }: { searchParams: SearchP
           <td>{eur(o.price.total)}</td><td>{dt(o.payment!.paidAt)}</td>
           <td>{o.status !== "cancelled" ? <span className="badge ok">Paid</span> : o.refundedAt ? <span className="badge">Refunded</span> : <span className="badge bad">Refund due</span>}</td>
           <td><div className="row nowrap"><Link className="btn btn-light btn-sm" href={`/invoice/${o.id}`}>Invoice</Link>
-            {o.status === "cancelled" && !o.refundedAt && <ActionButton action={markRefunded} fields={{ uuid: o.uuid }} from={HERE} kind="btn-gold btn-sm">Mark refunded</ActionButton>}</div></td>
+            {o.status === "cancelled" && !o.refundedAt && o.payment!.method === "trustly" && o.paymentStatus === "paid" &&
+              <ActionButton action={refundViaTrustly} fields={{ uuid: o.uuid }} from={HERE} kind="btn-gold btn-sm"
+                confirm={`Refund ${eur(o.price.total)} to ${o.customer.name} via Trustly?`}>Refund via Trustly</ActionButton>}
+            {o.status === "cancelled" && !o.refundedAt && <ActionButton action={markRefunded} fields={{ uuid: o.uuid }} from={HERE} kind="btn-light btn-sm"
+              confirm="Mark as refunded? Use this only if the money was returned outside the app.">Mark refunded</ActionButton>}</div></td>
         </tr>)}</tbody>
       </table></div>}</div>
     <div className="card"><h2>Driver payouts</h2>

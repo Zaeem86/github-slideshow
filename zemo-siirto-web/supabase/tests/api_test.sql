@@ -5,7 +5,7 @@
 \pset tuples_only on
 \pset format unaligned
 create schema test;
-grant usage on schema test to anon, authenticated;
+grant usage on schema test to anon, authenticated, service_role;
 create function test.ok(cond boolean, name text) returns text language sql as
 $$ select case when coalesce(cond, false) then 'PASS ' else 'FAIL ' end || name $$;
 create function test.err(q text, pat text, name text) returns text language plpgsql as $$
@@ -15,7 +15,7 @@ begin
 exception when others then
   return case when sqlerrm ilike '%' || pat || '%' then 'PASS ' || name else 'FAIL ' || name || ' (' || sqlerrm || ')' end;
 end $$;
-grant execute on all functions in schema test to anon, authenticated;
+grant execute on all functions in schema test to anon, authenticated, service_role;
 
 -- Users (sign-up trigger creates the profiles)
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -135,6 +135,42 @@ reset role; select set_config('request.jwt.claim.sub', :'admin', false) \g /dev/
 set role authenticated;
 select public.admin_assign_driver(:'o3', :'d1') \g /dev/null
 select test.err(format('select public.admin_assign_driver(%L, %L)', :'o3', :'d2'), 'no longer waiting', 'cannot assign twice');
+
+-- ---- online payments (Trustly)
+reset role; select set_config('request.jwt.claim.sub', :'c1', false) \g /dev/null
+set role authenticated;
+select (public.create_order(format('{"pickup_city":"Helsinki","pickup_address":"A 1","pickup_date":"%s","dropoff_city":"Lahti","dropoff_address":"B 2","car_model":"Golf","car_plate":"P-1"}', (now() at time zone 'Europe/Helsinki')::date)::jsonb))->>'uuid' as o4 \gset
+select public.start_payment(:'o4', 'trustly')->>'payment_id' as pay1 \gset
+select test.ok((select status = 'initiated' and amount_cents = (select price_total_cents from orders where id = :'o4') from payments where id = :'pay1'), 'customer starts a payment for the order total');
+select test.err(format('select public.attach_provider_order(%L, ''T1'', ''https://x'')', :'pay1'), 'permission denied', 'customer cannot attach provider order');
+select test.err(format('select public.record_payment_event(''trustly'', ''n0'', ''credit'', %L, null, 999999, ''EUR'', ''{}'')', :'pay1'), 'permission denied', 'customer cannot fake a payment notification');
+reset role; set role service_role;
+select public.attach_provider_order(:'pay1', 'T-1001', 'https://pay.example/1') \g /dev/null
+select test.ok(public.record_payment_event('trustly', 'n1', 'pending', :'pay1', 'T-1001', null, 'EUR', '{}') = 'pending', 'pending notification');
+select test.ok(public.record_payment_event('trustly', 'n2', 'credit', :'pay1', 'T-1001', 100, 'EUR', '{}') = 'amount_mismatch', 'too small credit is not accepted');
+select test.ok(public.record_payment_event('trustly', 'n3', 'credit', :'pay1', 'T-9999', (select price_total_cents from orders where id = :'o4'), 'EUR', '{}') = 'order_id_mismatch', 'credit for another Trustly order is not accepted');
+select test.ok((select status = 'pending_payment' from orders where id = :'o4'), 'order still unpaid after bad notifications');
+select test.ok(public.record_payment_event('trustly', 'n4', 'credit', :'pay1', 'T-1001', (select price_total_cents from orders where id = :'o4'), 'EUR', '{}') = 'paid', 'valid credit marks the payment paid');
+select test.ok((select status = 'open' and payment_method = 'trustly' and paid_at is not null from orders where id = :'o4'), 'order is paid and open for drivers');
+select test.ok(public.record_payment_event('trustly', 'n4', 'credit', :'pay1', 'T-1001', (select price_total_cents from orders where id = :'o4'), 'EUR', '{}') = 'duplicate', 'repeated notification is ignored');
+select test.ok((select count(*) = 1 from order_events where order_id = :'o4' and event_type = 'payment_received'), 'order marked paid exactly once');
+reset role; select set_config('request.jwt.claim.sub', :'c1', false) \g /dev/null
+set role authenticated;
+select test.err(format('select public.start_payment(%L)', :'o4'), 'already paid', 'cannot start a second payment for a paid order');
+select test.ok((select o->>'paymentStatus' = 'paid' from jsonb_array_elements(public.get_app_state()->'orders') o where o->>'uuid' = :'o4'), 'payment status visible to the customer');
+select test.ok((select count(*) = 0 from payment_events), 'customer cannot read the payment log');
+select public.cancel_order(:'o4') \g /dev/null
+reset role; select set_config('request.jwt.claim.sub', :'d1', false) \g /dev/null
+set role authenticated;
+select test.err(format('select public.admin_refund_info(%L)', :'o4'), 'not allowed', 'driver cannot request refund details');
+reset role; select set_config('request.jwt.claim.sub', :'admin', false) \g /dev/null
+set role authenticated;
+select test.ok((select public.admin_refund_info(:'o4')->>'provider_order_id') = 'T-1001', 'admin gets the Trustly order to refund');
+reset role; set role service_role;
+select public.complete_refund(:'pay1') \g /dev/null
+select test.ok((select o.refunded_at is not null and p.status = 'refunded' from orders o join payments p on p.order_id = o.id where o.id = :'o4'), 'refund recorded on order and payment');
+select test.err(format('select public.complete_refund(%L)', :'pay1'), 'not refundable', 'cannot refund twice');
+select test.ok(public.record_payment_event('trustly', 'n9', 'credit', 'no-such-payment', 'T-0', 100, 'EUR', '{}') = 'unknown_payment', 'notification for unknown payment is logged, not applied');
 
 -- ---- anon
 reset role; select set_config('request.jwt.claim.sub', '', false) \g /dev/null

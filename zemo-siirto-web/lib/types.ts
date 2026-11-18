@@ -26,7 +26,9 @@ export type Order = {
   driverId: string;
   rejectedBy: string[];
   inspection: { pickup?: Inspection; delivery?: Inspection };
-  payment: null | { method: "card" | "mobilepay" | "invoice"; last4: string | null; paidAt: string };
+  payment: null | { method: "card" | "mobilepay" | "invoice" | "trustly"; last4: string | null; paidAt: string };
+  /** Latest online payment attempt (Trustly): initiated | pending | paid | cancelled | failed | debited | refunded */
+  paymentStatus?: string | null;
   refundedAt: string | null;
   driverPaidAt: string | null;
 };

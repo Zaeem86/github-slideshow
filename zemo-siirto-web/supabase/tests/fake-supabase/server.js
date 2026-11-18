@@ -10,6 +10,7 @@
 //   Data (PostgREST) POST /rest/v1/rpc/<fn> – runs public.<fn>(named args) as role anon/authenticated
 //                   with request.jwt.claim.sub set, so RLS, grants and the role checks are the real ones.
 // Optional: serves the legacy static site (zemo-siirto/) with a config.js pointing at this server.
+// Service role: requests whose bearer token equals $FAKE_SERVICE_KEY run as role service_role.
 // Test helper: POST /test/promote {email} makes a user admin.
 const http = require("http");
 const fs = require("fs");
@@ -67,12 +68,12 @@ const readBody = req => new Promise(resolve => {
   let b = ""; req.on("data", c => { b += c; }); req.on("end", () => { try { resolve(b ? JSON.parse(b) : {}); } catch { resolve({}); } });
 });
 
-async function rpc(name, args, uid) {
+async function rpc(name, args, uid, role) {
   if (!/^[a-z_][a-z0-9_]*$/.test(name) || Object.keys(args).some(k => !/^[a-z_][a-z0-9_]*$/.test(k))) throw Object.assign(new Error("bad request"), { code: "PGRST100" });
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await client.query(`set local role ${uid ? "authenticated" : "anon"}`);
+    await client.query(`set local role ${role || (uid ? "authenticated" : "anon")}`);
     await client.query("select set_config('request.jwt.claim.sub', $1, true)", [uid || ""]);
     const keys = Object.keys(args);
     const sql = `select public.${name}(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")}) as r`;
@@ -133,10 +134,12 @@ http.createServer(async (req, res) => {
 
     // ---------------- Data
     if (p.startsWith("/rest/v1/rpc/") && req.method === "POST") {
-      const claims = verify(bearer(req));
+      const token = bearer(req);
+      const isService = !!process.env.FAKE_SERVICE_KEY && token === process.env.FAKE_SERVICE_KEY;
+      const claims = isService ? null : verify(token);
       const args = await readBody(req);
       try {
-        const data = await rpc(p.slice("/rest/v1/rpc/".length), args, claims ? claims.sub : null);
+        const data = await rpc(p.slice("/rest/v1/rpc/".length), args, claims ? claims.sub : null, isService ? "service_role" : null);
         return send(res, 200, JSON.stringify(data ?? null));
       } catch (e) {
         const status = e.code === "42501" ? 403 : 400;

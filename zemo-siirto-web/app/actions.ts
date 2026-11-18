@@ -9,6 +9,8 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_PAGE, todayFi, validIban, yearsSince, type Portal } from "@/lib/domain";
 import type { AppState } from "@/lib/types";
+import { amountString, trustlyCall, trustlyConfig, trustlyEnabled } from "@/lib/trustly";
+import { serviceRpc } from "@/lib/supabase/service";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const PORTALS: Portal[] = ["customer", "driver", "admin"];
@@ -132,6 +134,47 @@ export async function payOrder(fd: FormData) {
   const method = str(fd, "method"), last4 = str(fd, "last4");
   return step(fd, () => rpc("demo_pay_order", { p_order: str(fd, "uuid"), p_method: method, p_last4: method === "card" ? last4 : null }),
     "Booking confirmed – thank you!", `/customer/tracking?id=${encodeURIComponent(str(fd, "id"))}`);
+}
+
+/**
+ * Real bank payment with Trustly: create a payment attempt, ask Trustly for a payment link
+ * (Deposit), store Trustly's order id, and send the customer to Trustly. The order becomes paid
+ * only when Trustly's signed "credit" notification arrives (app/api/trustly/notifications).
+ */
+export async function startTrustlyPayment(fd: FormData) {
+  const id = str(fd, "id");
+  const from = `/customer/pay/${encodeURIComponent(id)}`;
+  if (!trustlyEnabled()) redirect(withMsg(from, "error", "Bank payment is not available yet"));
+  const { data: checkoutUrl, error } = await attempt(async () => {
+    const p = await rpc<{ payment_id: string; order_number: string; amount_cents: number; currency: string; customer_id: string; email: string; full_name: string }>(
+      "start_payment", { p_order: str(fd, "uuid"), p_provider: "trustly" });
+    const c = trustlyConfig();
+    const [first = "", ...rest] = (p.full_name || "").trim().split(/\s+/);
+    const back = (result: string) => `${c.appUrl}/customer/pay/${encodeURIComponent(p.order_number)}?result=${result}`;
+    const r = await trustlyCall("Deposit",
+      { NotificationURL: `${c.appUrl}/api/trustly/notifications`, EndUserID: p.customer_id, MessageID: p.payment_id },
+      { Currency: p.currency, Amount: amountString(p.amount_cents), Firstname: first, Lastname: rest.join(" "), Email: p.email,
+        Country: "FI", Locale: "fi_FI", SuccessURL: back("success"), FailURL: back("fail"), ShopperStatement: "Zemo Siirto" });
+    const url = String(r.url ?? ""), orderid = String(r.orderid ?? "");
+    if (!url.startsWith("https://") && c.env === "production") throw new Error("Payment provider returned an invalid link");
+    if (!url || !orderid) throw new Error("Payment provider did not return a payment link");
+    await serviceRpc("attach_provider_order", { p_payment: p.payment_id, p_provider_order_id: orderid, p_checkout_url: url });
+    return url;
+  });
+  if (error || !checkoutUrl) redirect(withMsg(from, "error", error || "Could not start the payment"));
+  redirect(checkoutUrl);
+}
+
+/** Admin: return a Trustly payment for a cancelled order through Trustly's Refund API. */
+export async function refundViaTrustly(fd: FormData) {
+  return step(fd, async () => {
+    if (!trustlyEnabled()) throw new Error("Trustly is not configured");
+    const info = await rpc<{ payment_id: string; provider_order_id: string; amount_cents: number; currency: string }>(
+      "admin_refund_info", { p_order: str(fd, "uuid") });
+    const r = await trustlyCall("Refund", { OrderID: info.provider_order_id, Amount: amountString(info.amount_cents), Currency: info.currency }, null);
+    if (String(r.result) !== "1") throw new Error("The refund was not accepted by the payment provider");
+    await serviceRpc("complete_refund", { p_payment: info.payment_id });
+  }, "Refund sent via Trustly");
 }
 
 export async function cancelOrder(fd: FormData) {
