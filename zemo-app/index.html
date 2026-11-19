@@ -370,6 +370,8 @@ button{cursor:pointer}
     </div>
 
     <button type="submit" class="kirjaudu-btn" id="loginSubmitBtn">Kirjaudu</button>
+
+    <a href="customer.html" class="forgot-link" id="customerLink" style="text-align:center;text-decoration:none">Asiakas? Tilaa auton siirto →</a>
   </form>
 </section>
 
@@ -533,9 +535,9 @@ $('forgotBtn').addEventListener('click', () => {
 
 $('loginForm').addEventListener('submit', e => {
   e.preventDefault();
-  $('loginScreen').classList.add('hidden');
-  $('driverPortal').classList.remove('hidden');
-  showToast('Tervetuloa, kuljettaja!');
+  // Kirjaudu → driver page (driver.html), signed in.
+  if (window.parent !== window) parent.postMessage({ zemoGo: 'driver', login: true }, '*');
+  else window.location.href = 'driver.html';
 });
 
 $('logoutBtn').addEventListener('click', () => {
@@ -1908,10 +1910,25 @@ $('langBtn').addEventListener('click', () => {
     document.getElementById('vp').setAttribute('content', p.viewport);
     document.title = p.title;
     p.el.focus();
+    if (pendingLogin === name) { pendingLogin = null; signIn(p.el); }
+  }
+
+  // "Kirjaudu" on the main page opens the driver page signed in: submit that page's own login form.
+  var pendingLogin = null;
+  function signIn(frame) {
+    function run() {
+      var d = frame.contentDocument, form = d && d.getElementById('loginForm'), view = d && d.getElementById('loginView');
+      if (form && view && !view.classList.contains('hidden')) form.requestSubmit();
+    }
+    var d = frame.contentDocument;
+    if (d && d.readyState === 'complete' && d.getElementById('loginForm')) run();
+    else frame.addEventListener('load', run, { once: true });
   }
 
   window.addEventListener('message', function (e) {
-    if (e.data && NAMES.indexOf(e.data.zemoGo) >= 0) location.hash = e.data.zemoGo;
+    if (!e.data || NAMES.indexOf(e.data.zemoGo) < 0) return;
+    if (e.data.login) pendingLogin = e.data.zemoGo;
+    if (location.hash === '#' + e.data.zemoGo) show(); else location.hash = e.data.zemoGo;
   });
   window.addEventListener('hashchange', show);
   show();
