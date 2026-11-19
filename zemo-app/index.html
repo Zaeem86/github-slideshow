@@ -1,0 +1,1921 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" id="vp" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto</title>
+<!--
+  Zemo Siirto – all pages in one file.
+  Each original page (index, customer, driver, admin) is stored unchanged below and shown in its own frame,
+  exactly as if opened as a separate file. Open a page with: #index (default) · #customer · #driver · #admin
+  Only additions: shared.js (rebuilt, it was not included) and link handling between the pages.
+-->
+<style>
+html,body{margin:0;height:100%;background:#0b1015;overflow:hidden}
+iframe.page{position:fixed;inset:0;width:100%;height:100%;border:0;display:none;background:#0b1015}
+iframe.page.active{display:block}
+</style>
+</head>
+<body>
+<script type="text/plain" id="shared-js">
+/* shared.js – rebuilt (the original file was not included).
+   Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
+(function () {
+  var KEY = 'zemoSiirtoState';
+  function defaults() {
+    var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
+    function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
+    return {
+      pricing: pricing,
+      orders: [
+        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', customer: 'Matti Meikäläinen', driver: '', inspected: false },
+        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', customer: 'Aino Korhonen', driver: '', inspected: false },
+        { id: 'ZS-1041', from: 'Turku', to: 'Pori', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
+      ],
+      drivers: [
+        { name: 'Mikko Virtanen', contact: '+358 40 123 4567', licence: 'B', trips: 9, status: 'active' },
+        { name: 'Laura Nieminen', contact: 'laura.nieminen@esimerkki.fi', licence: 'B', trips: 0, status: 'pending' }
+      ],
+      payouts: [],
+      inspections: []
+    };
+  }
+  function get() {
+    try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pricing && s.orders) return s; } catch (e) {}
+    return defaults();
+  }
+  function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function reset() { save(defaults()); }
+  function fmtEur(n) {
+    return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  }
+  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur };
+})();
+</script>
+<script type="text/plain" id="links-js">
+(function () {
+  /* Single-file navigation: links to index.html / customer.html / driver.html / admin.html switch pages. */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var m = a.getAttribute('href').match(/^(index|customer|driver|admin)\.html(?:\?.*)?$/);
+    if (!m) return;
+    e.preventDefault();
+    parent.postMessage({ zemoGo: m[1] }, '*');
+  });
+})();
+</script>
+
+<script type="text/html" id="page-index">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Zemo Siirto — Kuljettaja</title>
+<style>
+:root{
+  --bg:#080c10;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--orange-glow:rgba(242,138,69,.45);
+  --green:#6bd1a0;--teal:#18a999
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Arial,sans-serif;overflow-x:hidden}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+/* ================= SCREEN 1: SWIPE SPLASH ================= */
+.splash-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:space-between;
+  padding:48px 24px 54px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(242,138,69,.14) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 15%, #16202a 0%, #070a0e 70%);
+  position:relative;
+  user-select:none;
+}
+
+.logo-stage{
+  margin-top:auto;
+  margin-bottom:auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+
+/* Custom Glowing Z + Road + Car SVG Emblem */
+.z-emblem{
+  width:min(270px, 72vw);
+  height:auto;
+  filter:drop-shadow(0 0 22px rgba(242,138,69,.35));
+}
+
+.zemo-wordmark{
+  font-size:clamp(44px, 11vw, 58px);
+  font-weight:900;
+  letter-spacing:-.03em;
+  color:#ffffff;
+  margin:10px 0 0;
+  line-height:1;
+}
+
+/* Swipe Track */
+.swipe-wrap{
+  width:min(340px, 90vw);
+  margin-top:24px;
+}
+
+.swipe-track{
+  position:relative;
+  height:68px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(242,138,69,.16), rgba(20,27,34,.92));
+  border:1.5px solid rgba(242,138,69,.65);
+  box-shadow:0 0 24px rgba(242,138,69,.15), inset 0 0 14px rgba(0,0,0,.6);
+  padding:5px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+
+.swipe-fill{
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:64px;
+  background:linear-gradient(90deg, rgba(242,138,69,.35), rgba(242,138,69,.1));
+  border-radius:999px;
+  pointer-events:none;
+}
+
+.swipe-knob{
+  position:relative;
+  z-index:2;
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #ff9d57, #e66e1e);
+  box-shadow:0 0 20px var(--orange-glow);
+  display:grid;
+  place-items:center;
+  cursor:grab;
+  touch-action:none;
+  will-change:transform;
+}
+.swipe-knob:active{cursor:grabbing}
+
+/* Auto-nudge animation to center and back until touched */
+@keyframes autoNudge {
+  0%, 15%   { transform: translateX(0px); }
+  50%       { transform: translateX(125px); }
+  85%, 100% { transform: translateX(0px); }
+}
+.swipe-knob.auto-anim{
+  animation: autoNudge 2.6s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+
+/* ================= SCREEN 2: DRIVER LOGIN ================= */
+.login-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px 22px;
+  background:radial-gradient(circle at 50% 18%, rgba(242,138,69,.1) 0%, #080c10 60%);
+  animation:fadeIn .35s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.login-logo{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin-bottom:34px;
+}
+.login-logo .z-emblem{width:155px}
+.login-logo .zemo-wordmark{font-size:36px;margin-top:6px}
+
+.login-box{
+  width:min(380px, 100%);
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.clean-input{
+  width:100%;
+  height:56px;
+  border-radius:14px;
+  border:1px solid #2b3744;
+  background:#151e27;
+  color:#f4f7fa;
+  font-size:16px;
+  text-align:center;
+  padding:0 18px;
+  outline:none;
+  transition:.18s;
+}
+.clean-input::placeholder{color:#9baab7;opacity:1}
+.clean-input:focus{
+  border-color:var(--orange);
+  background:#19242f;
+  box-shadow:0 0 0 3px rgba(242,138,69,.15);
+}
+
+.forgot-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:-4px;
+}
+.forgot-link{
+  background:none;
+  border:0;
+  color:#25b8a6;
+  font-size:14px;
+  font-weight:700;
+  padding:4px 2px;
+}
+.forgot-link:hover{text-decoration:underline}
+
+.kirjaudu-btn{
+  width:100%;
+  height:58px;
+  border:0;
+  border-radius:16px;
+  background:#343f4b;
+  color:#ffffff;
+  font-size:18px;
+  font-weight:800;
+  margin-top:6px;
+  transition:.2s;
+}
+.kirjaudu-btn.ready, .kirjaudu-btn:hover{
+  background:var(--orange);
+  color:#17100b;
+}
+
+/* ================= SCREEN 3: DRIVER WORKSPACE ================= */
+.top{height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#0d1319;position:sticky;top:0;z-index:20}
+.brand-mini{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:.12em}
+.mark{width:34px;height:34px;border:2px solid var(--orange);border-radius:9px;display:grid;place-items:center;color:var(--orange);font-size:17px;transform:skew(-7deg)}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:8px;font-size:13px}
+.wrap{width:min(1100px,calc(100% - 32px));margin:auto;padding:22px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:20px;margin-bottom:16px}
+.job{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:15px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:10px 15px;font-size:13px}
+.btn.green{background:var(--green);color:#0b2217}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#1c3a30;color:#a8f0ce}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:12px 18px;border-radius:10px;display:none;z-index:60;font-size:13px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<\!-- ==================== 1. SPLASH / SWIPE SCREEN ==================== -->
+<section id="splashScreen" class="splash-screen">
+  <div></div>
+
+  <div class="logo-stage">
+    <\!-- Glowing Z + Road + Car Emblem -->
+    <svg class="z-emblem" viewBox="0 0 320 230" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="zStroke" x1="40" y1="20" x2="280" y2="210" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#ffbe73"/>
+          <stop offset="50%" stop-color="#f28a45"/>
+          <stop offset="100%" stop-color="#ff9d4d"/>
+        </linearGradient>
+        <linearGradient id="zFill" x1="160" y1="20" x2="160" y2="210" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#1e2731"/>
+          <stop offset="100%" stop-color="#0f151b"/>
+        </linearGradient>
+      </defs>
+      <\!-- Speed lines left -->
+      <line x1="15" y1="52" x2="88" y2="52" stroke="#f28a45" stroke-width="2.5" stroke-opacity="0.65"/>
+      <line x1="28" y1="66" x2="82" y2="66" stroke="#f28a45" stroke-width="2" stroke-opacity="0.45"/>
+      <line x1="10" y1="175" x2="65" y2="175" stroke="#f28a45" stroke-width="2" stroke-opacity="0.45"/>
+
+      <\!-- Winding road emerging from right -->
+      <path d="M185 152 C265 142, 295 105, 232 76" stroke="#f28a45" stroke-width="24" stroke-linecap="round" opacity="0.25"/>
+      <path d="M175 152 C260 142, 290 105, 230 76" stroke="#161f28" stroke-width="20"/>
+      <path d="M175 152 C260 142, 290 105, 230 76" stroke="#f28a45" stroke-width="2" stroke-dasharray="10 8"/>
+
+      <\!-- Main Z Shape -->
+      <path d="M98 30 H268 L138 174 H255 L235 202 H48 L178 58 H76 Z"
+            fill="url(#zFill)" stroke="url(#zStroke)" stroke-width="4" stroke-linejoin="round"/>
+
+      <\!-- Stylized Sleek Car Silhouette at bottom of Z -->
+      <g transform="translate(96, 134)">
+        <path d="M18 32 L34 14 C40 8, 52 6, 72 6 C92 6, 104 9, 112 16 L126 30 C131 32, 133 37, 132 43 L126 46 H14 L8 42 C8 36, 12 33, 18 32 Z"
+              fill="#111820" stroke="#f28a45" stroke-width="2"/>
+        <\!-- Headlights -->
+        <path d="M22 33 L36 35 L33 38 L20 36 Z" fill="#ffffff"/>
+        <path d="M96 35 L112 33 L114 36 L99 38 Z" fill="#ffffff"/>
+        <\!-- Wheels -->
+        <circle cx="34" cy="46" r="10" fill="#0b0f14" stroke="#8b9aa8" stroke-width="2"/>
+        <circle cx="104" cy="46" r="10" fill="#0b0f14" stroke="#8b9aa8" stroke-width="2"/>
+      </g>
+    </svg>
+
+    <div class="zemo-wordmark">Zemo</div>
+  </div>
+
+  <\!-- Swipe Left to Right Control (No Text) -->
+  <div class="swipe-wrap">
+    <div class="swipe-track" id="swipeTrack">
+      <div class="swipe-fill" id="swipeFill"></div>
+      <div class="swipe-knob auto-anim" id="swipeKnob" aria-label="Swipe right">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="#140d08" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<\!-- ==================== 2. DRIVER LOGIN SCREEN ==================== -->
+<section id="loginScreen" class="login-screen hidden">
+  <div class="login-logo">
+    <svg class="z-emblem" viewBox="0 0 320 230" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M175 152 C260 142, 290 105, 230 76" stroke="#161f28" stroke-width="20"/>
+      <path d="M175 152 C260 142, 290 105, 230 76" stroke="#f28a45" stroke-width="2" stroke-dasharray="10 8"/>
+      <path d="M98 30 H268 L138 174 H255 L235 202 H48 L178 58 H76 Z"
+            fill="#141c24" stroke="#f28a45" stroke-width="4" stroke-linejoin="round"/>
+      <g transform="translate(96, 134)">
+        <path d="M18 32 L34 14 C40 8, 52 6, 72 6 C92 6, 104 9, 112 16 L126 30 C131 32, 133 37, 132 43 L126 46 H14 L8 42 C8 36, 12 33, 18 32 Z"
+              fill="#111820" stroke="#f28a45" stroke-width="2"/>
+        <path d="M22 33 L36 35 L33 38 L20 36 Z" fill="#ffffff"/>
+        <path d="M96 35 L112 33 L114 36 L99 38 Z" fill="#ffffff"/>
+        <circle cx="34" cy="46" r="10" fill="#0b0f14" stroke="#8b9aa8" stroke-width="2"/>
+        <circle cx="104" cy="46" r="10" fill="#0b0f14" stroke="#8b9aa8" stroke-width="2"/>
+      </g>
+    </svg>
+    <div class="zemo-wordmark">Zemo</div>
+  </div>
+
+  <form id="loginForm" class="login-box">
+    <input type="text" id="usernameInput" class="clean-input" placeholder="Käyttäjätunnus" autocomplete="username" required>
+    <input type="password" id="passwordInput" class="clean-input" placeholder="Salasana" autocomplete="current-password" required>
+
+    <div class="forgot-row">
+      <button type="button" class="forgot-link" id="forgotBtn">Salasana unohtunut</button>
+    </div>
+
+    <button type="submit" class="kirjaudu-btn" id="loginSubmitBtn">Kirjaudu</button>
+  </form>
+</section>
+
+<\!-- ==================== 3. DRIVER WORKSPACE ==================== -->
+<div id="driverPortal" class="hidden">
+  <header class="top">
+    <div class="brand-mini">
+      <span class="mark">Z</span>
+      <span>ZEMO <small style="color:var(--orange);font-size:10px">DRIVER</small></span>
+    </div>
+    <button class="ghost" id="logoutBtn">Kirjaudu ulos</button>
+  </header>
+
+  <main class="wrap">
+    <nav class="nav" id="driverNav">
+      <button class="active" data-tab="jobs">Avoimet tehtävät</button>
+      <button data-tab="active">Omat tehtävät</button>
+      <button data-tab="earnings">Ansiot</button>
+    </nav>
+
+    <section id="jobs" class="tab-panel">
+      <div class="card">
+        <h2 style="margin:0 0 14px;font-size:18px">Avoimet siirtotehtävät</h2>
+        <div class="job">
+          <div>
+            <strong>#ZS-1042 · Helsinki → Tampere</strong>
+            <div style="font-size:12px;color:var(--muted)">Toyota Corolla (ABC-123) · 180 km</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <b style="color:var(--green);font-size:17px">175,00 €</b>
+            <button class="btn" onclick="acceptDemoJob(this)">Hyväksy</button>
+          </div>
+        </div>
+        <div class="job">
+          <div>
+            <strong>#ZS-1043 · Lahti → Jyväskylä</strong>
+            <div style="font-size:12px;color:var(--muted)">Skoda Octavia (XYZ-987) · 170 km</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <b style="color:var(--green);font-size:17px">165,00 €</b>
+            <button class="btn" onclick="acceptDemoJob(this)">Hyväksy</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="active" class="tab-panel hidden">
+      <div class="card">
+        <h2 style="margin:0 0 14px;font-size:18px">Omat aktiiviset tehtävät</h2>
+        <div class="job">
+          <div>
+            <strong>#ZS-1041 · Turku → Pori</strong>
+            <div style="font-size:12px;color:var(--muted)">VW Golf (GOLF-1) · 140 km · <span class="pill">Kuljetuksessa</span></div>
+          </div>
+          <a href="https://www.google.com/maps/dir/Turku/Pori" target="_blank" class="btn green" style="text-decoration:none">Avaa reitti ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="earnings" class="tab-panel hidden">
+      <div class="card">
+        <h2 style="margin:0 0 8px;font-size:18px">Kuukauden ansiot</h2>
+        <div style="font-size:32px;font-weight:900;color:var(--green)">1 415,00 €</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">9 suoritettua siirtoa tässä kuussa</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+/* ================= INTERACTIVE SWIPE LOGIC ================= */
+const track = $('swipeTrack');
+const knob = $('swipeKnob');
+const fill = $('swipeFill');
+
+let isDragging = false;
+let startX = 0;
+let currentX = 0;
+
+function getMaxSlide() {
+  return track.clientWidth - knob.clientWidth - 10;
+}
+
+function openLoginScreen() {
+  $('splashScreen').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+  setTimeout(() => $('usernameInput').focus(), 100);
+}
+
+function onStart(clientX) {
+  isDragging = true;
+  knob.classList.remove('auto-anim');
+  knob.style.transition = 'none';
+  fill.style.transition = 'none';
+  startX = clientX - currentX;
+}
+
+function onMove(clientX) {
+  if (!isDragging) return;
+  const max = getMaxSlide();
+  let nextX = clientX - startX;
+  nextX = Math.max(0, Math.min(nextX, max));
+  currentX = nextX;
+  knob.style.transform = `translateX(${currentX}px)`;
+  fill.style.width = `${currentX + knob.clientWidth + 5}px`;
+
+  if (currentX >= max * 0.82) {
+    isDragging = false;
+    knob.style.transition = 'transform .2s ease';
+    knob.style.transform = `translateX(${max}px)`;
+    setTimeout(openLoginScreen, 180);
+  }
+}
+
+function onEnd() {
+  if (!isDragging) return;
+  isDragging = false;
+  currentX = 0;
+  knob.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
+  fill.style.transition = 'width .3s cubic-bezier(.2,.8,.2,1)';
+  knob.style.transform = 'translateX(0px)';
+  fill.style.width = '64px';
+  setTimeout(() => {
+    if (!isDragging) {
+      knob.style.transition = '';
+      knob.classList.add('auto-anim');
+    }
+  }, 320);
+}
+
+knob.addEventListener('mousedown', e => onStart(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onEnd);
+
+knob.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passive: true });
+window.addEventListener('touchmove', e => onMove(e.touches[0].clientX), { passive: true });
+window.addEventListener('touchend', onEnd);
+
+/* ================= LOGIN FORM LOGIC ================= */
+function checkInputs() {
+  const ready = $('usernameInput').value.trim().length > 0 && $('passwordInput').value.trim().length > 0;
+  $('loginSubmitBtn').classList.toggle('ready', ready);
+}
+$('usernameInput').addEventListener('input', checkInputs);
+$('passwordInput').addEventListener('input', checkInputs);
+
+$('forgotBtn').addEventListener('click', () => {
+  showToast('Palautuslinkki lähetetty sähköpostiisi.');
+});
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  $('loginScreen').classList.add('hidden');
+  $('driverPortal').classList.remove('hidden');
+  showToast('Tervetuloa, kuljettaja!');
+});
+
+$('logoutBtn').addEventListener('click', () => {
+  $('driverPortal').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+});
+
+/* ================= WORKSPACE TABS ================= */
+document.querySelectorAll('#driverNav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#driverNav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== btn.dataset.tab));
+  });
+});
+
+window.acceptDemoJob = function(btn) {
+  btn.textContent = 'Valittu ✓';
+  btn.disabled = true;
+  btn.style.background = '#26333e';
+  btn.style.color = '#9baab7';
+  showToast('Tehtävä lisätty omiin tehtäviisi.');
+};
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-customer">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto — Asiakasportaali</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1180px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.brand small{display:block;font-size:9px;color:var(--blue);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.user-pill{display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 11px;font-size:12px;font-weight:700;background:#1b2836;color:var(--blue)}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1180px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 16px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:11px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:12px 16px;font-size:14px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.pricebox{background:linear-gradient(145deg,#202d38,#151d25);border:1px solid #394854;border-radius:14px;padding:20px}
+.pricebox .amount{font-size:36px;font-weight:900;letter-spacing:-.04em;color:var(--orange)}
+.line{height:1px;background:var(--line);margin:14px 0}
+.row{display:flex;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px}
+
+.order-item{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.order-title{font-size:16px;font-weight:800}
+.order-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.pill{display:inline-block;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.blue{background:#1b324b;color:#8ebcff}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+
+.timeline{position:relative;padding-left:26px;margin-top:16px}
+.timeline::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.t-step{position:relative;padding-bottom:20px}
+.t-step:last-child{padding-bottom:0}
+.t-dot{position:absolute;left:-23px;top:3px;width:12px;height:12px;border-radius:50%;background:var(--line);border:2px solid var(--panel)}
+.t-step.done .t-dot{background:var(--green)}
+.t-step.active .t-dot{background:var(--orange);box-shadow:0 0 0 4px rgba(242,138,69,.22)}
+.t-step strong{display:block;font-size:14px}
+.t-step small{color:var(--muted);font-size:12px}
+
+.driver-card{background:#0e151c;border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}
+.avatar{width:44px;height:44px;border-radius:50%;background:#243342;display:grid;place-items:center;font-weight:900;color:var(--orange)}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:540px){.fields{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <span class="mark">Z</span>
+    <span>ZEMO SIIRTO<small>CUSTOMER PORTAL</small></span>
+  </a>
+  <div class="topright">
+    <a class="ghost" href="index.html" data-fi="← Etusivu" data-en="← Home">← Etusivu</a>
+    <span class="user-pill hidden" id="userBadge">Aino Korhonen</span>
+    <button class="lang" id="langBtn">EN</button>
+    <button class="ghost hidden" id="logoutBtn" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Asiakkaan kirjautuminen" data-en="Customer Login">Asiakkaan kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu sisään tilataksesi auton siirron ja seurataksesi kuljetusta." data-en="Sign in to book vehicle relocations and track live deliveries.">Kirjaudu sisään tilataksesi auton siirron ja seurataksesi kuljetusta.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Sähköposti" data-en="Email Address">Sähköposti</label>
+        <input type="email" value="aino.korhonen@esimerkki.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Kirjaudu asiakasportaaliin →" data-en="Enter Customer Portal →">Kirjaudu asiakasportaaliin →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <nav class="nav" id="custNav">
+    <button class="active" data-tab="dashboard" data-fi="Yleisnäkymä" data-en="Dashboard">Yleisnäkymä</button>
+    <button data-tab="create" data-fi="+ Tilaa uusi siirto" data-en="+ Create Order">+ Tilaa uusi siirto</button>
+    <button data-tab="tracking" data-fi="Live-seuranta" data-en="Tracking">Live-seuranta</button>
+  </nav>
+
+  <section id="dashboard" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat"><b id="activeCount">0</b><span data-fi="Aktiiviset siirrot" data-en="Active relocations">Aktiiviset siirrot</span></div>
+      <div class="stat"><b id="totalOrdersCount">0</b><span data-fi="Tilaukset yhteensä" data-en="Total orders">Tilaukset yhteensä</span></div>
+      <div class="stat"><b style="color:var(--green)">100%</b><span data-fi="Vakuutusturva aktiivinen" data-en="Relocation insurance active">Vakuutusturva aktiivinen</span></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <h2 data-fi="Kaikki siirtotilaukset" data-en="Relocation Orders">Kaikki siirtotilaukset</h2>
+          <p class="sub" style="margin:0" data-fi="Klikkaa tilausta avataksesi reaaliaikaisen seurannan." data-en="Select an order to view live tracking and driver details.">Klikkaa tilausta avataksesi reaaliaikaisen seurannan.</p>
+        </div>
+        <button class="btn" onclick="switchTab('create')" data-fi="+ Uusi tilaus" data-en="+ New Order">+ Uusi tilaus</button>
+      </div>
+      <div id="ordersList"></div>
+    </div>
+  </section>
+
+  <section id="create" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Tilaa auton siirto" data-en="Create Relocation Order">Tilaa auton siirto</h2>
+        <p class="sub" data-fi="Täytä nouto- ja toimitustiedot sekä auton perustiedot." data-en="Enter pickup/drop-off addresses and vehicle specifications.">Täytä nouto- ja toimitustiedot sekä auton perustiedot.</p>
+        <form id="orderForm">
+          <div class="fields">
+            <div class="field">
+              <label data-fi="Noutopaikka" data-en="Pickup City">Noutopaikka</label>
+              <input id="inFrom" placeholder="Porvoo" required>
+            </div>
+            <div class="field">
+              <label data-fi="Toimituspaikka" data-en="Destination City">Toimituspaikka</label>
+              <input id="inTo" placeholder="Helsinki" required>
+            </div>
+            <div class="field">
+              <label data-fi="Arvioitu matka (km)" data-en="Estimated Distance (km)">Arvioitu matka (km)</label>
+              <input id="inKm" type="number" min="5" value="50" required>
+            </div>
+            <div class="field">
+              <label data-fi="Toivottu päivämäärä" data-en="Preferred Date">Toivottu päivämäärä</label>
+              <input id="inDate" type="date" value="2026-11-22" required>
+            </div>
+            <div class="field">
+              <label data-fi="Rekisterinumero" data-en="Registration Plate">Rekisterinumero</label>
+              <input id="inReg" placeholder="FIN-202" required>
+            </div>
+            <div class="field">
+              <label data-fi="Auton merkki ja malli" data-en="Make & Model">Auton merkki ja malli</label>
+              <input id="inCar" placeholder="Volvo XC60" required>
+            </div>
+          </div>
+          <button class="btn block" type="submit" data-fi="Vahvista tilaus ja siirry seurantaan →" data-en="Confirm Order & Track →">Vahvista tilaus ja siirry seurantaan →</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Hinta-arvio" data-en="Instant Price Breakdown">Hinta-arvio</h2>
+        <p class="sub" data-fi="Synkronoitu suoraan ylläpidon hinnoittelun kanssa." data-en="Synced live with Admin pricing settings.">Synkronoitu suoraan ylläpidon hinnoittelun kanssa.</p>
+        <div class="pricebox">
+          <span style="font-size:12px;color:var(--muted)" data-fi="Kokonaishinta (sis. ALV)" data-en="Total Price (incl. VAT)">Kokonaishinta (sis. ALV)</span>
+          <div class="amount" id="calcTotal">— €</div>
+          <div class="line"></div>
+          <div class="row"><span data-fi="Perusmaksu" data-en="Base fee">Perusmaksu</span><b id="calcBase">25,00 €</b></div>
+          <div class="row"><span data-fi="Ajomatka" data-en="Distance">Ajomatka</span><b id="calcKm">50 km</b></div>
+          <div class="row"><span data-fi="Kilometriveloitus" data-en="Distance charge">Kilometriveloitus</span><b id="calcDistCost">55,00 €</b></div>
+          <div class="row"><span data-fi="Palvelu- ja vakuutusmaksu" data-en="Service & insurance fee">Palvelu- ja vakuutusmaksu</span><b id="calcFee">10,00 €</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tracking" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <h2 id="trackTitle">—</h2>
+            <p class="sub" id="trackCar" style="margin:0">—</p>
+          </div>
+          <span class="pill blue" id="trackStatusPill">—</span>
+        </div>
+        <div class="timeline" id="trackTimeline"></div>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Määritetty kuljettaja" data-en="Assigned Driver">Määritetty kuljettaja</h2>
+        <p class="sub" data-fi="Tarkistettu Zemo Siirto -ammattikuljettaja." data-en="Verified Zemo Siirto professional driver.">Tarkistettu Zemo Siirto -ammattikuljettaja.</p>
+        <div class="driver-card" id="driverBox"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+function updateCalc() {
+  const p = ZemoStore.get().pricing;
+  const km = Math.max(1, Number($('inKm').value) || 0);
+  const distCost = km * p.rate;
+  const total = p.base + distCost + p.fee;
+  $('calcBase').textContent = ZemoStore.fmtEur(p.base);
+  $('calcFee').textContent = ZemoStore.fmtEur(p.fee);
+  $('calcKm').textContent = km + ' km';
+  $('calcDistCost').textContent = ZemoStore.fmtEur(distCost);
+  $('calcTotal').textContent = ZemoStore.fmtEur(total);
+}
+$('inKm').addEventListener('input', updateCalc);
+
+function statusBadge(st) {
+  if (st === 'new') return `<span class="pill orange">${lang === 'fi' ? 'Etsii kuljettajaa' : 'Finding Driver'}</span>`;
+  if (st === 'transit') return `<span class="pill blue">${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</span>`;
+  return `<span class="pill green">${lang === 'fi' ? 'Toimitettu' : 'Delivered'}</span>`;
+}
+
+function renderOrders() {
+  const orders = ZemoStore.get().orders;
+  $('activeCount').textContent = orders.filter(o => o.status !== 'delivered').length;
+  $('totalOrdersCount').textContent = orders.length;
+  $('ordersList').innerHTML = orders.map(o => `
+    <div class="order-item">
+      <div>
+        <div class="order-title">#${o.id} · ${o.from} → ${o.to}</div>
+        <div class="order-meta">${o.car} · ${o.km} km · ${o.date} · <b>${ZemoStore.fmtEur(o.price)}</b></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${statusBadge(o.status)}
+        <button class="btn outline" style="padding:8px 12px;font-size:12px" onclick="trackOrder('${o.id}')">${lang === 'fi' ? 'Seuraa' : 'Track'}</button>
+      </div>
+    </div>
+  `).join('');
+  updateCalc();
+}
+
+window.trackOrder = function(id) {
+  const orders = ZemoStore.get().orders;
+  const o = orders.find(x => x.id === id) || orders[0];
+  if (!o) return;
+  $('trackTitle').textContent = `#${o.id} · ${o.from} → ${o.to}`;
+  $('trackCar').textContent = `${o.car} · ${o.km} km · ${ZemoStore.fmtEur(o.price)}`;
+  $('trackStatusPill').outerHTML = statusBadge(o.status).replace('class="pill', 'id="trackStatusPill" class="pill');
+
+  if (o.status === 'new') {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vastaanotettu' : 'Order Received'}</strong><small>${o.date}</small></div>
+      <div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Vahvistetaan kuljettajaa' : 'Assigning Verified Driver'}</strong><small>${lang === 'fi' ? 'Tilaus näkyy nyt avoimena kuljettajille.' : 'Order is live on the driver job board.'}</small></div>
+    `;
+    $('driverBox').innerHTML = `<div class="order-meta">${lang === 'fi' ? 'Kuljettajaa ei ole vielä kiinnitetty.' : 'No driver assigned yet.'}</div>`;
+  } else if (o.status === 'delivered') {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto noudettu ja tarkastettu' : 'Picked Up & Inspected'}</strong><small>OK</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Toimitettu määränpäähän' : 'Delivered to Destination'}</strong><small>${o.date}</small></div>
+    `;
+    $('driverBox').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div class="avatar">✓</div><div><strong>${o.driver || 'Mikko Virtanen'}</strong><div class="order-meta">${lang === 'fi' ? 'Kuljetus suoritettu' : 'Completed'}</div></div></div>`;
+  } else {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljettaja vahvistettu' : 'Driver Assigned'}</strong><small>${o.driver}</small></div>
+      <div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</strong><small>${lang === 'fi' ? 'Reitillä kohteeseen' : 'En route to destination'} ${o.to}</small></div>
+      <div class="t-step"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto toimitettu' : 'Delivered'}</strong><small>${lang === 'fi' ? 'Odottaa luovutusta' : 'Awaiting drop-off'}</small></div>
+    `;
+    $('driverBox').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div class="avatar">ZS</div><div><strong>${o.driver}</strong><div class="order-meta">4.9 ★ · B-ajokortti</div></div></div><a href="tel:+358401234567" class="btn outline" style="text-decoration:none;padding:9px 12px;font-size:12px">${lang === 'fi' ? 'Soita' : 'Call'}</a>`;
+  }
+  switchTab('tracking');
+};
+
+function switchTab(id) {
+  document.querySelectorAll('#custNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== id));
+}
+
+function enterPortal() {
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  $('userBadge').classList.remove('hidden');
+  renderOrders();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('track')) trackOrder(params.get('track'));
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  enterPortal();
+  toast(lang === 'fi' ? 'Tervetuloa asiakasportaaliin!' : 'Welcome to Customer Portal!');
+});
+
+// Auto-enter if coming directly from index booking
+if (new URLSearchParams(window.location.search).get('track')) enterPortal();
+
+$('logoutBtn').addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+  $('userBadge').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#custNav button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+$('orderForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const state = ZemoStore.get();
+  const p = state.pricing;
+  const km = Math.max(1, Number($('inKm').value) || 0);
+  const total = p.base + (p.rate * km) + p.fee;
+  const newId = 'ZS-' + (1043 + state.orders.length);
+
+  state.orders.unshift({
+    id: newId,
+    from: $('inFrom').value.trim(),
+    to: $('inTo').value.trim(),
+    car: `${$('inCar').value.trim()} (${$('inReg').value.trim().toUpperCase()})`,
+    km: km,
+    price: total,
+    driverPay: Math.round(total * (p.driverShare / 100)),
+    status: 'new',
+    date: $('inDate').value,
+    customer: 'Aino Korhonen',
+    driver: '',
+    inspected: false
+  });
+  ZemoStore.save(state);
+  renderOrders();
+  trackOrder(newId);
+  toast(lang === 'fi' ? `Tilaus #${newId} luotu!` : `Order #${newId} created!`);
+});
+
+window.addEventListener('storage', renderOrders);
+
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderOrders();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-driver">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto — Kuljettajaportaali</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff;--red:#f26b6b
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1180px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.brand small{display:block;font-size:9px;color:var(--orange);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:800;background:#19352a;color:var(--green)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1180px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 15px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:11px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:12px 16px;font-size:14px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.green{background:var(--green);color:#0c2218}
+.btn.blue{background:var(--blue);color:#0b1a2e}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.job{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.job-route{font-size:16px;font-weight:800}
+.job-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.job-pay{font-size:18px;font-weight:900;color:var(--green)}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+
+.check-item{display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:#0e151c}
+.check-item label{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:14px}
+.check-item input[type="checkbox"]{width:18px;height:18px;accent-color:var(--orange)}
+
+.nav-box{background:linear-gradient(145deg,#182430,#0f171f);border:1px solid #354759;border-radius:14px;padding:20px}
+.step-line{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.step-line:last-child{border:0}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--orange);color:#17110d;font-weight:900;display:grid;place-items:center;font-size:13px}
+
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:540px){.fields{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <span class="mark">Z</span>
+    <span>ZEMO SIIRTO<small>DRIVER PORTAL</small></span>
+  </a>
+  <div class="topright">
+    <a class="ghost" href="index.html" data-fi="← Etusivu" data-en="← Home">← Etusivu</a>
+    <span class="badge hidden" id="driverStatusBadge"><span class="dot"></span><span>Mikko Virtanen</span></span>
+    <button class="lang" id="langBtn">EN</button>
+    <button class="ghost hidden" id="logoutBtn" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Kuljettajan kirjautuminen" data-en="Driver Login">Kuljettajan kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu hallitaksesi siirtotehtäviä, tarkastuksia ja ansioita." data-en="Sign in to manage relocation jobs, vehicle inspections, and earnings.">Kirjaudu hallitaksesi siirtotehtäviä, tarkastuksia ja ansioita.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Kuljettajatunnus / Sähköposti" data-en="Driver ID / Email">Kuljettajatunnus / Sähköposti</label>
+        <input type="email" value="mikko.virtanen@zemosiirto.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Kirjaudu kuljettajanäkymään →" data-en="Enter Driver Portal →">Kirjaudu kuljettajanäkymään →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <nav class="nav" id="driverNav">
+    <button class="active" data-tab="available" data-fi="Avoimet tehtävät" data-en="Available Jobs">Avoimet tehtävät</button>
+    <button data-tab="myjobs" data-fi="Omat tehtävät" data-en="My Jobs">Omat tehtävät</button>
+    <button data-tab="inspection" data-fi="Auton tarkastus" data-en="Inspection">Auton tarkastus</button>
+    <button data-tab="navigation" data-fi="Navigointi" data-en="Navigation">Navigointi</button>
+    <button data-tab="earnings" data-fi="Ansiot" data-en="Earnings">Ansiot</button>
+    <button data-tab="profile" data-fi="Profiili" data-en="Profile">Profiili</button>
+  </nav>
+
+  <section id="available" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat"><b id="availCount">0</b><span data-fi="Avoimet siirrot" data-en="Available jobs">Avoimet siirrot</span></div>
+      <div class="stat"><b id="myActiveCount">0</b><span data-fi="Omat aktiiviset" data-en="My active jobs">Omat aktiiviset</span></div>
+      <div class="stat"><b style="color:var(--green)">4.9 ★</b><span data-fi="Kuljettaja-arvio" data-en="Driver rating">Kuljettaja-arvio</span></div>
+    </div>
+    <div class="card">
+      <h2 data-fi="Avoimet siirtotehtävät" data-en="Available Relocation Jobs">Avoimet siirtotehtävät</h2>
+      <p class="sub" data-fi="Valitse sopiva siirto ja siirrä se omiin tehtäviisi." data-en="Accept an available transfer to move it to your active jobs.">Valitse sopiva siirto ja siirrä se omiin tehtäviisi.</p>
+      <div id="availableList"></div>
+    </div>
+  </section>
+
+  <section id="myjobs" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Omat aktiiviset tehtävät" data-en="My Active Jobs">Omat aktiiviset tehtävät</h2>
+      <p class="sub" data-fi="Suorita tarkastus ennen ajoa ja merkitse auto toimitetuksi perillä." data-en="Complete vehicle inspection before driving and mark delivered upon arrival.">Suorita tarkastus ennen ajoa ja merkitse auto toimitetuksi perillä.</p>
+      <div id="myJobsList"></div>
+    </div>
+  </section>
+
+  <section id="inspection" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Nouto- ja luovutustarkastus" data-en="Pickup & Delivery Inspection">Nouto- ja luovutustarkastus</h2>
+        <p class="sub" data-fi="Pakollinen digitaalinen tarkastus ennen ajoon lähtöä." data-en="Mandatory digital inspection before starting the drive.">Pakollinen digitaalinen tarkastus ennen ajoon lähtöä.</p>
+        <form id="inspectionForm">
+          <div class="fields" style="margin-bottom:14px">
+            <div class="field">
+              <label data-fi="Valitse tehtävä" data-en="Select Job">Valitse tehtävä</label>
+              <select id="inspectJobSelect"></select>
+            </div>
+            <div class="field">
+              <label data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
+              <input type="number" id="odoInput" placeholder="84250" required>
+            </div>
+            <div class="field">
+              <label data-fi="Polttoaine / Akku (%)" data-en="Fuel / Battery level (%)">Polttoaine / Akku (%)</label>
+              <select id="fuelInput">
+                <option value="100%">100% (Täysi)</option>
+                <option value="75%" selected>75%</option>
+                <option value="50%">50%</option>
+                <option value="25%">25%</option>
+              </select>
+            </div>
+            <div class="field">
+              <label data-fi="Tarkastusvaihe" data-en="Inspection stage">Tarkastusvaihe</label>
+              <select id="stageInput">
+                <option value="pickup" data-fi="Nouto (Ennen ajoa)" data-en="Pickup (Pre-trip)">Nouto (Ennen ajoa)</option>
+                <option value="delivery" data-fi="Luovutus (Perillä)" data-en="Delivery (Post-trip)">Luovutus (Perillä)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="Kori ja maalipinta tarkastettu" data-en="Exterior body & paint checked">Kori ja maalipinta tarkastettu</span></label></div>
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="Tuulilasi, peilit ja valot kunnossa" data-en="Windshield, mirrors, and lights intact">Tuulilasi, peilit ja valot kunnossa</span></label></div>
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="4 kulmakuvan ottaminen vahvistettu" data-en="4 corner photos captured and logged">4 kulmakuvan ottaminen vahvistettu</span></label></div>
+
+          <div class="field full" style="margin-top:10px">
+            <label data-fi="Huomiot" data-en="Notes">Huomiot</label>
+            <textarea id="inspectNotes" rows="2" placeholder="Ei havaittuja vaurioita"></textarea>
+          </div>
+          <button class="btn green block" type="submit" data-fi="Vahvista tarkastusraportti ✓" data-en="Submit Inspection Report ✓">Vahvista tarkastusraportti ✓</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Tallennetut raportit" data-en="Logged Reports">Tallennetut raportit</h2>
+        <p class="sub" data-fi="Viimeisimmät tarkastukset." data-en="Recent vehicle condition logs.">Viimeisimmät tarkastukset.</p>
+        <div id="inspectionLogs"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="navigation" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Reittiopastus" data-en="Route Navigation">Reittiopastus</h2>
+        <p class="sub" data-fi="Aktiivisen siirron nouto- ja toimitusosoitteet." data-en="Pickup and drop-off coordinates for your active transfer.">Aktiivisen siirron nouto- ja toimitusosoitteet.</p>
+        <div class="nav-box">
+          <div class="step-line">
+            <span class="step-num">A</span>
+            <div>
+              <strong id="navFrom">Turku — Noutopiste</strong>
+              <div class="job-meta" data-fi="Noutopiste · Avaimet noutopisteen tiskiltä" data-en="Pickup point · Keys at reception desk">Noutopiste · Avaimet noutopisteen tiskiltä</div>
+            </div>
+          </div>
+          <div class="step-line">
+            <span class="step-num">B</span>
+            <div>
+              <strong id="navTo">Pori — Toimituspiste (140 km)</strong>
+              <div class="job-meta" data-fi="Toimituspiste · Ota luovutuskuvat saapuessa" data-en="Drop-off point · Capture delivery photos on arrival">Toimituspiste · Ota luovutuskuvat saapuessa</div>
+            </div>
+          </div>
+          <div style="margin-top:18px">
+            <a id="gmapsLink" href="https://www.google.com/maps/dir/Turku/Pori" target="_blank" class="btn blue" style="text-decoration:none" data-fi="Avaa Google Mapsissa ↗" data-en="Open in Google Maps ↗">Avaa Google Mapsissa ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Ajonaikaiset ohjeet" data-en="Driver Guidelines">Ajonaikaiset ohjeet</h2>
+        <p class="sub" data-fi="Turvallisuus ja protokolla." data-en="Safety and delivery protocol.">Turvallisuus ja protokolla.</p>
+        <div class="job-meta" style="line-height:1.8">
+          • Noudata nopeusrajoituksia ja taloudellista ajotapaa.<br>
+          • Tupakointi ja lemmikit autossa on ehdottomasti kielletty.<br>
+          • Säilytä polttoaine- tai latauskuitit kulukorvausta varten.<br>
+          • Ota luovutuskuvat heti pysäköinnin jälkeen.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="earnings" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Tilityshistoria" data-en="Payout History">Tilityshistoria</h2>
+      <p class="sub" data-fi="Suoritetut kuljetukset ja palkkiot." data-en="Completed deliveries and driver payouts.">Suoritetut kuljetukset ja palkkiot.</p>
+      <table>
+        <thead>
+          <tr><th>ID</th><th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th><th data-fi="Tila" data-en="Status">Tila</th><th data-fi="Palkkio" data-en="Payout">Palkkio</th></tr>
+        </thead>
+        <tbody id="earningsTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="profile" class="tab-panel hidden">
+    <div class="card" style="max-width:650px">
+      <h2 data-fi="Kuljettajaprofiili" data-en="Driver Profile">Kuljettajaprofiili</h2>
+      <p class="sub" data-fi="Henkilötiedot, ajokortti ja tilitystiedot." data-en="Personal details, driving licence, and payout IBAN.">Henkilötiedot, ajokortti ja tilitystiedot.</p>
+      <form id="profileForm" class="fields">
+        <div class="field"><label data-fi="Koko nimi" data-en="Full Name">Koko nimi</label><input value="Mikko Virtanen" required></div>
+        <div class="field"><label data-fi="Puhelinnumero" data-en="Phone Number">Puhelinnumero</label><input value="+358 40 123 4567" required></div>
+        <div class="field"><label data-fi="Ajokorttiluokka" data-en="Licence Class">Ajokorttiluokka</label><select><option selected>B</option><option>BE</option></select></div>
+        <div class="field"><label>IBAN</label><input value="FI21 1234 5600 0007 85" required></div>
+        <div class="field full"><button class="btn" type="submit" data-fi="Tallenna profiili" data-en="Save Profile">Tallenna profiili</button></div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const DRIVER_NAME = 'Mikko Virtanen';
+const $ = id => document.getElementById(id);
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+function renderAll() {
+  const state = ZemoStore.get();
+  const avail = state.orders.filter(o => o.status === 'new');
+  const mine = state.orders.filter(o => o.status === 'transit' && o.driver === DRIVER_NAME);
+
+  $('availCount').textContent = avail.length;
+  $('myActiveCount').textContent = mine.length;
+
+  $('availableList').innerHTML = avail.length ? avail.map(j => `
+    <div class="job">
+      <div>
+        <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${j.date}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
+        <button class="btn" onclick="acceptJob('${j.id}')">${lang === 'fi' ? 'Hyväksy tehtävä' : 'Accept Job'}</button>
+      </div>
+    </div>
+  `).join('') : `<p class="sub">${lang === 'fi' ? 'Ei avoimia tehtäviä juuri nyt.' : 'No open jobs right now.'}</p>`;
+
+  $('myJobsList').innerHTML = mine.length ? mine.map(j => `
+    <div class="job">
+      <div>
+        <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
+        <div class="job-meta">${j.car} · ${j.km} km · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn outline" onclick="openNav('${j.from}','${j.to}',${j.km})">${lang === 'fi' ? 'Reitti' : 'Route'}</button>
+        <button class="btn green" onclick="completeJob('${j.id}')">${lang === 'fi' ? 'Merkitse toimitetuksi' : 'Mark Delivered'}</button>
+      </div>
+    </div>
+  `).join('') : `<p class="sub">${lang === 'fi' ? 'Sinulla ei ole aktiivisia tehtäviä.' : 'You have no active jobs.'}</p>`;
+
+  $('inspectJobSelect').innerHTML = mine.length
+    ? mine.map(j => `<option value="${j.id}">#${j.id} · ${j.from} → ${j.to} (${j.car})</option>`).join('')
+    : `<option value="">${lang === 'fi' ? 'Ei aktiivisia tehtäviä' : 'No active jobs'}</option>`;
+
+  $('inspectionLogs').innerHTML = state.inspections.map(l => `
+    <div class="job">
+      <div>
+        <div class="job-route">#${l.jobId}</div>
+        <div class="job-meta">${l.stage} · ${l.odo} km · ${l.fuel} · ${l.notes}</div>
+      </div>
+      <span class="pill green">OK</span>
+    </div>
+  `).join('');
+
+  $('earningsTable').innerHTML = state.payouts.map(p => `
+    <tr>
+      <td>#${p.id}</td>
+      <td>${p.driver}</td>
+      <td>${p.status === 'paid' ? '<span class="pill green">Maksettu</span>' : '<span class="pill orange">Odottaa tilitystä</span>'}</td>
+      <td><b>${ZemoStore.fmtEur(p.amount)}</b></td>
+    </tr>
+  `).join('');
+}
+
+window.acceptJob = function(id) {
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === id);
+  if (!job) return;
+  job.driver = DRIVER_NAME;
+  job.status = 'transit';
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? `Tehtävä #${id} hyväksytty!` : `Job #${id} accepted!`);
+};
+
+window.openNav = function(from, to, km) {
+  $('navFrom').textContent = `${from} — Noutopiste`;
+  $('navTo').textContent = `${to} — Toimituspiste (${km} km)`;
+  $('gmapsLink').href = `https://www.google.com/maps/dir/${encodeURIComponent(from)}/${encodeURIComponent(to)}`;
+  switchTab('navigation');
+};
+
+window.completeJob = function(id) {
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === id);
+  if (!job) return;
+  if (!job.inspected) {
+    showToast(lang === 'fi' ? 'Suorita auton tarkastus ennen luovutusta!' : 'Complete vehicle inspection first!');
+    switchTab('inspection');
+    return;
+  }
+  job.status = 'delivered';
+  state.payouts.unshift({
+    id: job.id,
+    driver: DRIVER_NAME,
+    iban: 'FI21 1234 5600 0007 85',
+    amount: job.driverPay,
+    status: 'pending'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? `Siirto #${id} valmis! Palkkio lähetetty tilitykseen.` : `Transfer #${id} completed! Payout queued.`);
+};
+
+function switchTab(tabId) {
+  document.querySelectorAll('#driverNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== tabId));
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  $('driverStatusBadge').classList.remove('hidden');
+  renderAll();
+  showToast(lang === 'fi' ? 'Tervetuloa kuljettajaportaaliin!' : 'Welcome to Driver Portal!');
+});
+
+$('logoutBtn').addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+  $('driverStatusBadge').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#driverNav button').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+$('inspectionForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const jobId = $('inspectJobSelect').value;
+  if (!jobId) return;
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === jobId);
+  if (job) job.inspected = true;
+  state.inspections.unshift({
+    jobId: jobId,
+    stage: $('stageInput').value,
+    odo: $('odoInput').value,
+    fuel: $('fuelInput').value,
+    notes: $('inspectNotes').value || 'OK'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? 'Tarkastusraportti tallennettu.' : 'Inspection report saved.');
+});
+
+$('profileForm').addEventListener('submit', e => {
+  e.preventDefault();
+  showToast(lang === 'fi' ? 'Profiili päivitetty.' : 'Profile updated.');
+});
+
+window.addEventListener('storage', renderAll);
+
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderAll();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-admin">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto — Hallintapaneeli (Admin)</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff;--red:#f26b6b
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1240px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.brand small{display:block;font-size:9px;color:var(--red);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.admin-badge{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:800;background:#3a1d22;color:#ff9e9e}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1240px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:10px 12px;outline:none}
+.field input:focus,.field select:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:11px 16px;font-size:13px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:7px}
+.btn.green{background:var(--green);color:#0b2217}
+.btn.red{background:var(--red);color:#260b0b}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:620px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.blue{background:#1b324b;color:#8ebcff}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+@media(max-width:900px){.statgrid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+@media(max-width:540px){.statgrid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <span class="mark">Z</span>
+    <span>ZEMO SIIRTO<small>ADMIN CONTROL</small></span>
+  </a>
+  <div class="topright">
+    <a class="ghost" href="index.html" data-fi="← Etusivu" data-en="← Home">← Etusivu</a>
+    <span class="admin-badge hidden" id="adminBadge">Admin · Superuser</span>
+    <button class="lang" id="langBtn">EN</button>
+    <button class="ghost hidden" id="logoutBtn" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Ylläpidon kirjautuminen" data-en="Admin Login">Ylläpidon kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu hallitaksesi tilauksia, kuljettajia, hinnoittelua ja maksuja." data-en="Sign in to manage orders, drivers, pricing, and settlements.">Kirjaudu hallitaksesi tilauksia, kuljettajia, hinnoittelua ja maksuja.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Ylläpitäjän sähköposti" data-en="Admin Email">Ylläpitäjän sähköposti</label>
+        <input type="email" value="admin@zemosiirto.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Avaa hallintapaneeli →" data-en="Enter Admin Panel →">Avaa hallintapaneeli →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <nav class="nav" id="adminNav">
+    <button class="active" data-tab="dashboard" data-fi="Yleisnäkymä" data-en="Dashboard">Yleisnäkymä</button>
+    <button data-tab="orders" data-fi="Tilaukset" data-en="Orders">Tilaukset</button>
+    <button data-tab="drivers" data-fi="Kuljettajat" data-en="Drivers">Kuljettajat</button>
+    <button data-tab="customers" data-fi="Asiakkaat" data-en="Customers">Asiakkaat</button>
+    <button data-tab="pricing" data-fi="Hinnoittelu" data-en="Pricing">Hinnoittelu</button>
+    <button data-tab="payments" data-fi="Maksut" data-en="Payments">Maksut</button>
+    <button data-tab="settings" data-fi="Asetukset" data-en="Settings">Asetukset</button>
+  </nav>
+
+  <section id="dashboard" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat"><b id="statOrders">0</b><span data-fi="Tilaukset yhteensä" data-en="Total orders">Tilaukset yhteensä</span></div>
+      <div class="stat"><b style="color:var(--green)" id="statRev">0 €</b><span data-fi="Tilauskanta (brutto)" data-en="Gross order volume">Tilauskanta (brutto)</span></div>
+      <div class="stat"><b id="statDrivers">0</b><span data-fi="Vahvistetut kuljettajat" data-en="Verified drivers">Vahvistetut kuljettajat</span></div>
+      <div class="stat"><b style="color:var(--orange)" id="statMargin">0 €</b><span data-fi="Alustan osuus" data-en="Platform net margin">Alustan osuus</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Nykyinen hinnoittelumalli" data-en="Active Pricing Model">Nykyinen hinnoittelumalli</h2>
+        <p class="sub" data-fi="Vaikuttaa välittömästi etusivun ja asiakasportaalin laskureihin." data-en="Live calculation parameters synced across all portals.">Vaikuttaa välittömästi etusivun ja asiakasportaalin laskureihin.</p>
+        <table>
+          <tbody>
+            <tr><td data-fi="Perusmaksu" data-en="Base fee">Perusmaksu</td><td><b id="dashBase">25,00 €</b></td></tr>
+            <tr><td data-fi="Kilometritaksa" data-en="Per-km rate">Kilometritaksa</td><td><b id="dashRate">1,10 €/km</b></td></tr>
+            <tr><td data-fi="Palvelumaksu" data-en="Service fee">Palvelumaksu</td><td><b id="dashFee">10,00 €</b></td></tr>
+            <tr><td>ALV / VAT</td><td><b id="dashVat">25,5 %</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Demotietojen hallinta" data-en="Demo Data Controls">Demotietojen hallinta</h2>
+        <p class="sub" data-fi="Palauta alkuperäiset esimerkkitiedot kaikkiin näkymiin." data-en="Reset shared platform state back to default demo values.">Palauta alkuperäiset esimerkkitiedot kaikkiin näkymiin.</p>
+        <button class="btn outline" onclick="resetDemoData()" data-fi="Palauta oletusdata" data-en="Reset Demo Data">Palauta oletusdata</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="orders" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Kaikki siirtotilaukset" data-en="All Relocation Orders">Kaikki siirtotilaukset</h2>
+      <p class="sub" data-fi="Määritä kuljettaja tai päivitä tilauksen tila." data-en="Assign drivers or update order status.">Määritä kuljettaja tai päivitä tilauksen tila.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th data-fi="Reitti & Auto" data-en="Route & Vehicle">Reitti & Auto</th>
+              <th data-fi="Asiakas" data-en="Customer">Asiakas</th>
+              <th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th>
+              <th>Hinta</th>
+              <th>Status</th>
+              <th data-fi="Toiminnot" data-en="Actions">Toiminnot</th>
+            </tr>
+          </thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="drivers" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Kuljettajien hallinta" data-en="Driver Management">Kuljettajien hallinta</h2>
+      <p class="sub" data-fi="Hyväksy uudet hakemukset ja tarkista ajokorttien kelpoisuus." data-en="Approve new applicants and verify licence eligibility.">Hyväksy uudet hakemukset ja tarkista ajokorttien kelpoisuus.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-fi="Nimi" data-en="Name">Nimi</th>
+              <th data-fi="Yhteystiedot" data-en="Contact">Yhteystiedot</th>
+              <th data-fi="Kortti" data-en="Licence">Kortti</th>
+              <th data-fi="Suoritetut" data-en="Trips">Suoritetut</th>
+              <th>Status</th>
+              <th data-fi="Hallinta" data-en="Control">Hallinta</th>
+            </tr>
+          </thead>
+          <tbody id="driversTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="customers" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Rekisteröityneet asiakkaat" data-en="Registered Customers">Rekisteröityneet asiakkaat</h2>
+      <p class="sub" data-fi="Yksityis- ja yritysasiakkaiden tilaushistoria." data-en="Private and B2B customer accounts.">Yksityis- ja yritysasiakkaiden tilaushistoria.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th data-fi="Asiakas" data-en="Customer">Asiakas</th><th data-fi="Tyyppi" data-en="Type">Tyyppi</th><th>Email</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Aino Korhonen</td><td><span class="pill">Yksityinen</span></td><td>aino.korhonen@esimerkki.fi</td><td><span class="pill green">Aktiivinen</span></td></tr>
+            <tr><td>Autoliike Laakkonen Oy</td><td><span class="pill blue">Yritys (B2B)</span></td><td>logistiikka@laakkonen-demo.fi</td><td><span class="pill green">Sopimusasiakas</span></td></tr>
+            <tr><td>Matti Meikäläinen</td><td><span class="pill">Yksityinen</span></td><td>matti.m@esimerkki.fi</td><td><span class="pill green">Aktiivinen</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Hinnoitteluasetukset" data-en="Pricing Configuration">Hinnoitteluasetukset</h2>
+        <p class="sub" data-fi="Tallennus päivittää automaattisesti kaikkien portaalien hintalaskurit." data-en="Saving updates price calculators across all portals immediately.">Tallennus päivittää automaattisesti kaikkien portaalien hintalaskurit.</p>
+        <form id="pricingForm" class="fields">
+          <div class="field"><label data-fi="Perusmaksu (€)" data-en="Base Fee (€)">Perusmaksu (€)</label><input type="number" id="inBase" step="0.5" required></div>
+          <div class="field"><label data-fi="Kilometriveloitus (€/km)" data-en="Per-km Rate (€/km)">Kilometriveloitus (€/km)</label><input type="number" id="inRate" step="0.05" required></div>
+          <div class="field"><label data-fi="Palvelu- ja vakuutusmaksu (€)" data-en="Service & Insurance Fee (€)">Palvelu- ja vakuutusmaksu (€)</label><input type="number" id="inFee" step="0.5" required></div>
+          <div class="field"><label>ALV % / VAT %</label><input type="number" id="inVat" step="0.5" required></div>
+          <div class="field full"><label data-fi="Kuljettajan palkkio-osuus (%)" data-en="Driver Payout Share (%)">Kuljettajan palkkio-osuus (%)</label><input type="number" id="inDriverShare" min="10" max="95" required></div>
+          <div class="field full"><button class="btn" type="submit" data-fi="Tallenna hinnoittelu" data-en="Save Pricing Rules">Tallenna hinnoittelu</button></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Esimerkkilaskelma (150 km)" data-en="Sample Breakdown (150 km)">Esimerkkilaskelma (150 km)</h2>
+        <p class="sub" data-fi="Esikatselu syötetyillä arvoilla." data-en="Live preview using configured rates.">Esikatselu syötetyillä arvoilla.</p>
+        <table>
+          <tbody>
+            <tr><td data-fi="Asiakkaan hinta (sis. ALV)" data-en="Customer Price (incl. VAT)">Asiakkaan hinta (sis. ALV)</td><td><b id="simCustPrice">—</b></td></tr>
+            <tr><td data-fi="Kuljettajan palkkio" data-en="Driver Payout">Kuljettajan palkkio</td><td><b id="simDriverPay" style="color:var(--green)">—</b></td></tr>
+            <tr><td data-fi="Alustan osuus" data-en="Platform Margin">Alustan osuus</td><td><b id="simMargin" style="color:var(--orange)">—</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="payments" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Maksut ja kuljettajatilitykset" data-en="Payments & Driver Payouts">Maksut ja kuljettajatilitykset</h2>
+      <p class="sub" data-fi="Hyväksy kuljettajien suorittamien siirtojen tilitykset." data-en="Approve driver settlements for completed deliveries.">Hyväksy kuljettajien suorittamien siirtojen tilitykset.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Tilaus</th><th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th><th>IBAN</th><th data-fi="Summa" data-en="Amount">Summa</th><th>Status</th><th data-fi="Toiminto" data-en="Action">Toiminto</th></tr>
+          </thead>
+          <tbody id="paymentsTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings" class="tab-panel hidden">
+    <div class="card" style="max-width:680px">
+      <h2 data-fi="Järjestelmäasetukset" data-en="System Settings">Järjestelmäasetukset</h2>
+      <p class="sub" data-fi="Alustan yleiset tiedot ja toiminta-alue." data-en="Platform general configuration and service region.">Alustan yleiset tiedot ja toiminta-alue.</p>
+      <form id="settingsForm" class="fields">
+        <div class="field"><label data-fi="Palvelun nimi" data-en="Platform Name">Palvelun nimi</label><input value="Zemo Siirto"></div>
+        <div class="field"><label data-fi="Asiakaspalvelu" data-en="Support Email">Asiakaspalvelu</label><input value="tuki@zemosiirto.fi"></div>
+        <div class="field"><label data-fi="Toiminta-alue" data-en="Operating Region">Toiminta-alue</label><select><option selected>Koko Suomi / All Finland</option></select></div>
+        <div class="field"><label data-fi="Jakotapa" data-en="Dispatch Mode">Jakotapa</label><select><option selected>Avoin tehtävälista + Manuaalinen</option></select></div>
+        <div class="field full"><button class="btn" type="submit" data-fi="Tallenna asetukset" data-en="Save Settings">Tallenna asetukset</button></div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+function renderAll() {
+  const state = ZemoStore.get();
+  const p = state.pricing;
+
+  // Pricing inputs & dash
+  $('inBase').value = p.base;
+  $('inRate').value = p.rate;
+  $('inFee').value = p.fee;
+  $('inVat').value = p.vat;
+  $('inDriverShare').value = p.driverShare;
+
+  $('dashBase').textContent = ZemoStore.fmtEur(p.base);
+  $('dashRate').textContent = ZemoStore.fmtEur(p.rate).replace(' €', ' €/km');
+  $('dashFee').textContent = ZemoStore.fmtEur(p.fee);
+  $('dashVat').textContent = p.vat + ' %';
+  updateSim();
+
+  // Stats
+  const gross = state.orders.reduce((acc, o) => acc + Number(o.price || 0), 0);
+  const dPays = state.orders.reduce((acc, o) => acc + Number(o.driverPay || 0), 0);
+  $('statOrders').textContent = state.orders.length;
+  $('statRev').textContent = ZemoStore.fmtEur(gross);
+  $('statMargin').textContent = ZemoStore.fmtEur(gross - dPays);
+  $('statDrivers').textContent = state.drivers.filter(d => d.status === 'active').length;
+
+  // Orders Table
+  $('ordersTable').innerHTML = state.orders.map((o, i) => `
+    <tr>
+      <td><b>#${o.id}</b></td>
+      <td>${o.from} → ${o.to}<br><small style="color:var(--muted)">${o.car} · ${o.km} km</small></td>
+      <td>${o.customer}</td>
+      <td>${o.driver || '—'}</td>
+      <td><b>${ZemoStore.fmtEur(o.price)}</b></td>
+      <td>
+        ${o.status === 'new' ? '<span class="pill orange">Uusi</span>' :
+          o.status === 'transit' ? '<span class="pill blue">Kuljetuksessa</span>' :
+          '<span class="pill green">Toimitettu</span>'}
+      </td>
+      <td>
+        ${o.status === 'new' ? `<button class="btn sm" onclick="assignDriver(${i})">${lang === 'fi' ? 'Kiinnitä Mikko' : 'Assign Mikko'}</button>` :
+          o.status === 'transit' ? `<button class="btn sm green" onclick="markDone(${i})">${lang === 'fi' ? 'Valmis' : 'Complete'}</button>` : '—'}
+      </td>
+    </tr>
+  `).join('');
+
+  // Drivers Table
+  $('driversTable').innerHTML = state.drivers.map((d, i) => `
+    <tr>
+      <td><b>${d.name}</b></td>
+      <td>${d.contact}</td>
+      <td>${d.licence}</td>
+      <td>${d.trips}</td>
+      <td>${d.status === 'active' ? '<span class="pill green">Aktiivinen</span>' : '<span class="pill orange">Odottaa</span>'}</td>
+      <td>
+        ${d.status === 'pending'
+          ? `<button class="btn sm green" onclick="toggleDriver(${i}, 'active')">${lang === 'fi' ? 'Hyväksy' : 'Approve'}</button>`
+          : `<button class="btn sm outline" onclick="toggleDriver(${i}, 'pending')">${lang === 'fi' ? 'Keskeytä' : 'Suspend'}</button>`}
+      </td>
+    </tr>
+  `).join('');
+
+  // Payments Table
+  $('paymentsTable').innerHTML = state.payouts.map((pay, i) => `
+    <tr>
+      <td>#${pay.id}</td>
+      <td>${pay.driver}</td>
+      <td><code>${pay.iban}</code></td>
+      <td><b>${ZemoStore.fmtEur(pay.amount)}</b></td>
+      <td>${pay.status === 'paid' ? '<span class="pill green">Maksettu</span>' : '<span class="pill orange">Odottaa</span>'}</td>
+      <td>
+        ${pay.status === 'pending'
+          ? `<button class="btn sm green" onclick="payDriver(${i})">${lang === 'fi' ? 'Maksa nyt' : 'Pay Now'}</button>`
+          : '✓'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.assignDriver = function(i) {
+  const state = ZemoStore.get();
+  state.orders[i].driver = 'Mikko Virtanen';
+  state.orders[i].status = 'transit';
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Kuljettaja kiinnitetty tilaukseen #${state.orders[i].id}` : `Driver assigned to #${state.orders[i].id}`);
+};
+
+window.markDone = function(i) {
+  const state = ZemoStore.get();
+  const o = state.orders[i];
+  o.status = 'delivered';
+  state.payouts.unshift({
+    id: o.id,
+    driver: o.driver || 'Mikko Virtanen',
+    iban: 'FI21 1234 5600 0007 85',
+    amount: o.driverPay,
+    status: 'pending'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Tilaus #${o.id} merkitty toimitetuksi.` : `Order #${o.id} marked delivered.`);
+};
+
+window.toggleDriver = function(i, st) {
+  const state = ZemoStore.get();
+  state.drivers[i].status = st;
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Kuljettajan tila päivitetty.' : 'Driver status updated.');
+};
+
+window.payDriver = function(i) {
+  const state = ZemoStore.get();
+  state.payouts[i].status = 'paid';
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Tilitys merkitty maksetuksi.' : 'Payout marked paid.');
+};
+
+window.resetDemoData = function() {
+  ZemoStore.reset();
+  renderAll();
+  toast(lang === 'fi' ? 'Oletusdata palautettu kaikkiin näkymiin.' : 'Default demo data restored.');
+};
+
+function updateSim() {
+  const b = Number($('inBase').value) || 0;
+  const r = Number($('inRate').value) || 0;
+  const f = Number($('inFee').value) || 0;
+  const share = (Number($('inDriverShare').value) || 75) / 100;
+  const total = b + (r * 150) + f;
+  const dPay = total * share;
+  const margin = total - dPay;
+  $('simCustPrice').textContent = ZemoStore.fmtEur(total);
+  $('simDriverPay').textContent = ZemoStore.fmtEur(dPay);
+  $('simMargin').textContent = ZemoStore.fmtEur(margin);
+}
+['inBase', 'inRate', 'inFee', 'inDriverShare'].forEach(id => $(id).addEventListener('input', updateSim));
+
+$('pricingForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const state = ZemoStore.get();
+  state.pricing = {
+    base: Number($('inBase').value) || 0,
+    rate: Number($('inRate').value) || 0,
+    fee: Number($('inFee').value) || 0,
+    vat: Number($('inVat').value) || 25.5,
+    driverShare: Number($('inDriverShare').value) || 75
+  };
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Hinnoittelu tallennettu ja synkronoitu!' : 'Pricing saved and synced across portals!');
+});
+
+$('settingsForm').addEventListener('submit', e => {
+  e.preventDefault();
+  toast(lang === 'fi' ? 'Järjestelmäasetukset tallennettu.' : 'System settings saved.');
+});
+
+function switchTab(id) {
+  document.querySelectorAll('#adminNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== id));
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  $('adminBadge').classList.remove('hidden');
+  renderAll();
+  toast(lang === 'fi' ? 'Kirjauduttu ylläpitonäkymään.' : 'Logged into Admin Control.');
+});
+
+$('logoutBtn').addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+  $('adminBadge').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#adminNav button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+window.addEventListener('storage', renderAll);
+
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderAll();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+
+<script>
+(function () {
+  var NAMES = ['index', 'customer', 'driver', 'admin'];
+  var frames = {};
+  // Undo the storage escapes. Written split up so this script never contains a closing script tag or comment opener.
+  var CLOSE = '<' + '/script', OPEN_COMMENT = '<' + '!--';
+  var restore = function (s) { return s.split('<\\/script').join(CLOSE).split('<\\!--').join(OPEN_COMMENT); };
+  var shared = document.getElementById('shared-js').textContent;
+  var links = document.getElementById('links-js').textContent;
+
+  function build(name) {
+    var html = restore(document.getElementById('page-' + name).textContent);
+    html = html.replace('<script src="shared.js">' + CLOSE + '>', '<script>' + shared + CLOSE + '>');
+    html = html.replace(/<\/body>/i, '<script>' + links + '<\/script></body>');
+    var f = document.createElement('iframe');
+    f.className = 'page';
+    f.title = name;
+    f.srcdoc = html;
+    document.body.appendChild(f);
+    var vp = html.match(/<meta name="viewport" content="([^"]*)"/i);
+    var title = html.match(/<title>([^<]*)<\/title>/i);
+    frames[name] = { el: f, viewport: vp ? vp[1] : 'width=device-width,initial-scale=1', title: title ? title[1] : 'Zemo Siirto' };
+    return frames[name];
+  }
+
+  function show() {
+    var name = location.hash.replace('#', '');
+    if (NAMES.indexOf(name) < 0) name = 'index';
+    var p = frames[name] || build(name);
+    NAMES.forEach(function (n) { if (frames[n]) frames[n].el.classList.toggle('active', n === name); });
+    document.getElementById('vp').setAttribute('content', p.viewport);
+    document.title = p.title;
+    p.el.focus();
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.data && NAMES.indexOf(e.data.zemoGo) >= 0) location.hash = e.data.zemoGo;
+  });
+  window.addEventListener('hashchange', show);
+  show();
+})();
+</script>
+</body>
+</html>
