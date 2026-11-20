@@ -640,6 +640,7 @@ button{cursor:pointer}
 .pill.orange{background:#4a3021;color:#ffbd8e}
 .pill.blue{background:#1b324b;color:#8ebcff}
 .pill.green{background:#1c3a30;color:#a8f0ce}
+.pill.red{background:#3a1d22;color:#ff9e9e}
 
 .timeline{position:relative;padding-left:26px;margin-top:16px}
 .timeline::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
@@ -819,7 +820,9 @@ function updateCalc() {
 }
 $('inKm').addEventListener('input', updateCalc);
 
-function statusBadge(st) {
+function statusBadge(st, o) {
+  // Pickup time passed without a driver (handled by admin).
+  if (o && ZemoStore.isExpired(o)) return `<span class="pill red">${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</span>`;
   if (st === 'new') return `<span class="pill orange">${lang === 'fi' ? 'Etsii kuljettajaa' : 'Finding Driver'}</span>`;
   if (st === 'transit') return `<span class="pill blue">${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</span>`;
   return `<span class="pill green">${lang === 'fi' ? 'Toimitettu' : 'Delivered'}</span>`;
@@ -836,7 +839,7 @@ function renderOrders() {
         <div class="order-meta">${o.car} · ${o.km} km · ${o.date} · <b>${ZemoStore.fmtEur(o.price)}</b></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        ${statusBadge(o.status)}
+        ${statusBadge(o.status, o)}
         <button class="btn outline" style="padding:8px 12px;font-size:12px" onclick="trackOrder('${o.id}')">${lang === 'fi' ? 'Seuraa' : 'Track'}</button>
       </div>
     </div>
@@ -850,12 +853,14 @@ window.trackOrder = function(id) {
   if (!o) return;
   $('trackTitle').textContent = `#${o.id} · ${o.from} → ${o.to}`;
   $('trackCar').textContent = `${o.car} · ${o.km} km · ${ZemoStore.fmtEur(o.price)}`;
-  $('trackStatusPill').outerHTML = statusBadge(o.status).replace('class="pill', 'id="trackStatusPill" class="pill');
+  $('trackStatusPill').outerHTML = statusBadge(o.status, o).replace('class="pill', 'id="trackStatusPill" class="pill');
 
   if (o.status === 'new') {
     $('trackTimeline').innerHTML = `
       <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vastaanotettu' : 'Order Received'}</strong><small>${o.date}</small></div>
-      <div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Vahvistetaan kuljettajaa' : 'Assigning Verified Driver'}</strong><small>${lang === 'fi' ? 'Tilaus näkyy nyt avoimena kuljettajille.' : 'Order is live on the driver job board.'}</small></div>
+      ${ZemoStore.isExpired(o)
+        ? `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</strong><small>${lang === 'fi' ? 'Kuljettajaa ei löytynyt ajoissa. Sovimme kanssasi uuden ajan.' : 'No driver was found in time. We will agree a new time with you.'}</small></div>`
+        : `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Vahvistetaan kuljettajaa' : 'Assigning Verified Driver'}</strong><small>${lang === 'fi' ? 'Tilaus näkyy nyt avoimena kuljettajille.' : 'Order is live on the driver job board.'}</small></div>`}
     `;
     $('driverBox').innerHTML = `<div class="order-meta">${lang === 'fi' ? 'Kuljettajaa ei ole vielä kiinnitetty.' : 'No driver assigned yet.'}</div>`;
   } else if (o.status === 'delivered') {
@@ -939,6 +944,8 @@ $('orderForm').addEventListener('submit', e => {
 });
 
 window.addEventListener('storage', renderOrders);
+// Re-check every minute so an order shows "Aika umpeutunut" as soon as its time passes.
+setInterval(() => { if (!$('appView').classList.contains('hidden')) renderOrders(); }, 60000);
 
 $('langBtn').addEventListener('click', () => {
   lang = lang === 'fi' ? 'en' : 'fi';
