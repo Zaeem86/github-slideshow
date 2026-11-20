@@ -743,6 +743,10 @@ button{cursor:pointer}
               <input id="inDate" type="date" value="2026-11-22" required>
             </div>
             <div class="field">
+              <label data-fi="Toivottu kellonaika" data-en="Preferred Time">Toivottu kellonaika</label>
+              <input id="inTime" type="time" value="09:00" required>
+            </div>
+            <div class="field">
               <label data-fi="Rekisterinumero" data-en="Registration Plate">Rekisterinumero</label>
               <input id="inReg" placeholder="FIN-202" required>
             </div>
@@ -820,6 +824,9 @@ function updateCalc() {
 }
 $('inKm').addEventListener('input', updateCalc);
 
+// "2026-11-22 klo 09:00"
+const when = o => o.date + (o.time ? (lang === 'fi' ? ' klo ' : ' at ') + o.time : '');
+
 function statusBadge(st, o) {
   // Pickup time passed without a driver (handled by admin).
   if (o && ZemoStore.isExpired(o)) return `<span class="pill red">${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</span>`;
@@ -836,7 +843,7 @@ function renderOrders() {
     <div class="order-item">
       <div>
         <div class="order-title">#${o.id} · ${o.from} → ${o.to}</div>
-        <div class="order-meta">${o.car} · ${o.km} km · ${o.date} · <b>${ZemoStore.fmtEur(o.price)}</b></div>
+        <div class="order-meta">${o.car} · ${o.km} km · ${when(o)} · <b>${ZemoStore.fmtEur(o.price)}</b></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         ${statusBadge(o.status, o)}
@@ -857,7 +864,7 @@ window.trackOrder = function(id) {
 
   if (o.status === 'new') {
     $('trackTimeline').innerHTML = `
-      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vastaanotettu' : 'Order Received'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vastaanotettu' : 'Order Received'}</strong><small>${when(o)}</small></div>
       ${ZemoStore.isExpired(o)
         ? `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</strong><small>${lang === 'fi' ? 'Kuljettajaa ei löytynyt ajoissa. Sovimme kanssasi uuden ajan.' : 'No driver was found in time. We will agree a new time with you.'}</small></div>`
         : `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Vahvistetaan kuljettajaa' : 'Assigning Verified Driver'}</strong><small>${lang === 'fi' ? 'Tilaus näkyy nyt avoimena kuljettajille.' : 'Order is live on the driver job board.'}</small></div>`}
@@ -865,14 +872,14 @@ window.trackOrder = function(id) {
     $('driverBox').innerHTML = `<div class="order-meta">${lang === 'fi' ? 'Kuljettajaa ei ole vielä kiinnitetty.' : 'No driver assigned yet.'}</div>`;
   } else if (o.status === 'delivered') {
     $('trackTimeline').innerHTML = `
-      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${when(o)}</small></div>
       <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto noudettu ja tarkastettu' : 'Picked Up & Inspected'}</strong><small>OK</small></div>
-      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Toimitettu määränpäähän' : 'Delivered to Destination'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Toimitettu määränpäähän' : 'Delivered to Destination'}</strong><small>${when(o)}</small></div>
     `;
     $('driverBox').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div class="avatar">✓</div><div><strong>${o.driver || 'Mikko Virtanen'}</strong><div class="order-meta">${lang === 'fi' ? 'Kuljetus suoritettu' : 'Completed'}</div></div></div>`;
   } else {
     $('trackTimeline').innerHTML = `
-      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${o.date}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${when(o)}</small></div>
       <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljettaja vahvistettu' : 'Driver Assigned'}</strong><small>${o.driver}</small></div>
       <div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</strong><small>${lang === 'fi' ? 'Reitillä kohteeseen' : 'En route to destination'} ${o.to}</small></div>
       <div class="t-step"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto toimitettu' : 'Delivered'}</strong><small>${lang === 'fi' ? 'Odottaa luovutusta' : 'Awaiting drop-off'}</small></div>
@@ -922,6 +929,11 @@ $('orderForm').addEventListener('submit', e => {
   const km = Math.max(1, Number($('inKm').value) || 0);
   const total = p.base + (p.rate * km) + p.fee;
   const newId = 'ZS-' + (1043 + state.orders.length);
+  // The pickup date and time must be in the future.
+  if (new Date($('inDate').value + 'T' + $('inTime').value + ':00') <= new Date()) {
+    toast(lang === 'fi' ? 'Valitse tuleva päivä ja kellonaika.' : 'Choose a future date and time.');
+    return;
+  }
 
   state.orders.unshift({
     id: newId,
@@ -933,6 +945,7 @@ $('orderForm').addEventListener('submit', e => {
     driverPay: Math.round(total * (p.driverShare / 100)),
     status: 'new',
     date: $('inDate').value,
+    time: $('inTime').value,
     customer: 'Aino Korhonen',
     driver: '',
     inspected: false
