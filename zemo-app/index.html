@@ -531,20 +531,6 @@ knob.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passiv
 window.addEventListener('touchmove', e => onMove(e.touches[0].clientX), { passive: true });
 window.addEventListener('touchend', onEnd);
 
-// Back to the swipe screen (used after a driver logs out).
-window.showSplash = function () {
-  $('loginScreen').classList.add('hidden');
-  $('driverPortal').classList.add('hidden');
-  $('splashScreen').classList.remove('hidden');
-  isDragging = false;
-  currentX = 0;
-  knob.style.transition = '';
-  knob.style.transform = 'translateX(0px)';
-  fill.style.transition = '';
-  fill.style.width = '64px';
-  knob.classList.add('auto-anim');
-};
-
 /* ================= LOGIN FORM LOGIC ================= */
 function checkInputs() {
   const ready = $('usernameInput').value.trim().length > 0 && $('passwordInput').value.trim().length > 0;
@@ -2126,13 +2112,7 @@ $('langBtn').addEventListener('click', () => {
     document.title = p.title;
     p.el.focus();
     if (pendingLogin === name) { pendingLogin = null; signIn(p.el); }
-    if (pendingSplash && name === 'index') {
-      pendingSplash = false;
-      var w = p.el.contentWindow;
-      if (w && w.showSplash) w.showSplash();   // a newly built page starts on the swipe screen anyway
-    }
   }
-  var pendingSplash = false;
 
   // "Kirjaudu" on the main page opens the driver page signed in: submit that page's own login form.
   var pendingLogin = null;
@@ -2149,7 +2129,8 @@ $('langBtn').addEventListener('click', () => {
   window.addEventListener('message', function (e) {
     if (!e.data || NAMES.indexOf(e.data.zemoGo) < 0) return;
     if (e.data.login) pendingLogin = e.data.zemoGo;
-    if (e.data.splash) pendingSplash = true;
+    // After a driver logs out, load the main page fresh so it looks exactly like the first start.
+    if (e.data.splash && frames.index) { frames.index.el.remove(); delete frames.index; }
     if (location.hash === '#' + e.data.zemoGo) show(); else location.hash = e.data.zemoGo;
   });
   window.addEventListener('hashchange', show);
