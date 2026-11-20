@@ -22,32 +22,32 @@ iframe.page.active{display:block}
    Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
 (function () {
   var KEY = 'zemoSiirtoState';
-  var SEED_VERSION = 2; // v2: more open jobs across Finland's regions
+  var SEED_VERSION = 3; // v2: more open jobs across Finland's regions · v3: pickup times
   function defaults() {
     var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
     function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
-    function job(id, from, to, region, car, km, date, customer) {
-      return { id: id, from: from, to: to, region: region, car: car, km: km, price: price(km), driverPay: Math.round(price(km) * 0.75), status: 'new', date: date, customer: customer, driver: '', inspected: false };
+    function job(id, from, to, region, car, km, date, time, customer) {
+      return { id: id, from: from, to: to, region: region, car: car, km: km, price: price(km), driverPay: Math.round(price(km) * 0.75), status: 'new', date: date, time: time, customer: customer, driver: '', inspected: false };
     }
     return {
       seedVersion: SEED_VERSION,
       pricing: pricing,
       orders: [
-        job('ZS-1055', 'Lahti', 'Mikkeli', 'Päijät-Häme', 'BMW 320d (LHT-861)', 120, '2026-12-05', 'Autoliike Laakkonen Oy'),
-        job('ZS-1054', 'Kajaani', 'Kuopio', 'Kainuu', 'Hyundai Tucson (KAJ-433)', 170, '2026-12-04', 'Matti Meikäläinen'),
-        job('ZS-1053', 'Turku', 'Salo', 'Varsinais-Suomi', 'Mazda CX-5 (TKU-275)', 55, '2026-12-03', 'Aino Korhonen'),
-        job('ZS-1052', 'Vantaa', 'Porvoo', 'Uusimaa', 'Tesla Model Y (VAN-640)', 40, '2026-12-02', 'Autoliike Laakkonen Oy'),
-        job('ZS-1051', 'Pori', 'Tampere', 'Satakunta', 'Nissan Leaf (POR-902)', 115, '2026-12-01', 'Matti Meikäläinen'),
-        job('ZS-1050', 'Kotka', 'Lappeenranta', 'Kymenlaakso', 'Skoda Superb (KTK-118)', 105, '2026-11-30', 'Aino Korhonen'),
-        job('ZS-1049', 'Jyväskylä', 'Helsinki', 'Keski-Suomi', 'Audi A4 (JKL-746)', 270, '2026-11-29', 'Autoliike Laakkonen Oy'),
-        job('ZS-1048', 'Vaasa', 'Seinäjoki', 'Pohjanmaa', 'Ford Focus (VAA-330)', 80, '2026-11-28', 'Matti Meikäläinen'),
-        job('ZS-1047', 'Kuopio', 'Joensuu', 'Pohjois-Savo', 'Kia Ceed (KUO-551)', 135, '2026-11-27', 'Aino Korhonen'),
-        job('ZS-1046', 'Rovaniemi', 'Kemi', 'Lappi', 'Toyota RAV4 (ROI-207)', 115, '2026-11-26', 'Autoliike Laakkonen Oy'),
-        job('ZS-1045', 'Tampere', 'Oulu', 'Pirkanmaa', 'Volvo V90 (TRE-889)', 490, '2026-11-26', 'Matti Meikäläinen'),
-        job('ZS-1044', 'Espoo', 'Turku', 'Uusimaa', 'VW Passat (EPS-412)', 165, '2026-11-25', 'Aino Korhonen'),
-        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', region: 'Päijät-Häme', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', customer: 'Matti Meikäläinen', driver: '', inspected: false },
-        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', region: 'Uusimaa', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', customer: 'Aino Korhonen', driver: '', inspected: false },
-        { id: 'ZS-1041', from: 'Turku', to: 'Pori', region: 'Varsinais-Suomi', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
+        job('ZS-1055', 'Lahti', 'Mikkeli', 'Päijät-Häme', 'BMW 320d (LHT-861)', 120, '2026-12-05', '10:30', 'Autoliike Laakkonen Oy'),
+        job('ZS-1054', 'Kajaani', 'Kuopio', 'Kainuu', 'Hyundai Tucson (KAJ-433)', 170, '2026-12-04', '08:00', 'Matti Meikäläinen'),
+        job('ZS-1053', 'Turku', 'Salo', 'Varsinais-Suomi', 'Mazda CX-5 (TKU-275)', 55, '2026-12-03', '13:15', 'Aino Korhonen'),
+        job('ZS-1052', 'Vantaa', 'Porvoo', 'Uusimaa', 'Tesla Model Y (VAN-640)', 40, '2026-12-02', '09:45', 'Autoliike Laakkonen Oy'),
+        job('ZS-1051', 'Pori', 'Tampere', 'Satakunta', 'Nissan Leaf (POR-902)', 115, '2026-12-01', '07:30', 'Matti Meikäläinen'),
+        job('ZS-1050', 'Kotka', 'Lappeenranta', 'Kymenlaakso', 'Skoda Superb (KTK-118)', 105, '2026-11-30', '11:00', 'Aino Korhonen'),
+        job('ZS-1049', 'Jyväskylä', 'Helsinki', 'Keski-Suomi', 'Audi A4 (JKL-746)', 270, '2026-11-29', '06:45', 'Autoliike Laakkonen Oy'),
+        job('ZS-1048', 'Vaasa', 'Seinäjoki', 'Pohjanmaa', 'Ford Focus (VAA-330)', 80, '2026-11-28', '14:30', 'Matti Meikäläinen'),
+        job('ZS-1047', 'Kuopio', 'Joensuu', 'Pohjois-Savo', 'Kia Ceed (KUO-551)', 135, '2026-11-27', '12:00', 'Aino Korhonen'),
+        job('ZS-1046', 'Rovaniemi', 'Kemi', 'Lappi', 'Toyota RAV4 (ROI-207)', 115, '2026-11-26', '09:00', 'Autoliike Laakkonen Oy'),
+        job('ZS-1045', 'Tampere', 'Oulu', 'Pirkanmaa', 'Volvo V90 (TRE-889)', 490, '2026-11-26', '07:00', 'Matti Meikäläinen'),
+        job('ZS-1044', 'Espoo', 'Turku', 'Uusimaa', 'VW Passat (EPS-412)', 165, '2026-11-25', '15:30', 'Aino Korhonen'),
+        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', region: 'Päijät-Häme', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', time: '10:00', customer: 'Matti Meikäläinen', driver: '', inspected: false },
+        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', region: 'Uusimaa', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', time: '08:30', customer: 'Aino Korhonen', driver: '', inspected: false },
+        { id: 'ZS-1041', from: 'Turku', to: 'Pori', region: 'Varsinais-Suomi', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', time: '09:15', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
       ],
       drivers: [
         { name: 'Mikko Virtanen', contact: '+358 40 123 4567', licence: 'B', trips: 9, status: 'active' },
@@ -65,6 +65,7 @@ iframe.page.active{display:block}
       var cur = byId[o.id];
       if (cur && cur.from === o.from && cur.to === o.to) {   // same demo job: just add its region
         if (!cur.region) cur.region = o.region;
+        if (!cur.time) cur.time = o.time;
         return;
       }
       if (cur) {                                             // number already used by another order
@@ -1274,14 +1275,13 @@ function showToast(msg) {
   setTimeout(() => t.style.display = 'none', 3200);
 }
 
-// Jobs are listed by date (soonest first); a job due within SOON_DAYS days (or overdue) gets a red frame.
-const SOON_DAYS = 3;
-function daysUntil(dateStr) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return Math.round((new Date(dateStr + 'T00:00:00') - today) / 864e5);
-}
-const isSoon = j => !!j.date && daysUntil(j.date) <= SOON_DAYS;
-const byTime = (x, y) => (x.date || '9999').localeCompare(y.date || '9999') || String(x.id).localeCompare(String(y.id));
+// Jobs are listed by pickup date and time (soonest first); a job starting within SOON_HOURS (or overdue) gets a red frame.
+const SOON_HOURS = 72;
+const startOf = j => new Date(j.date + 'T' + (j.time || '00:00') + ':00');
+const isSoon = j => !!j.date && (startOf(j) - Date.now()) / 36e5 <= SOON_HOURS;
+const byTime = (x, y) => ((x.date || '9999') + (x.time || '00:00')).localeCompare((y.date || '9999') + (y.time || '00:00')) || String(x.id).localeCompare(String(y.id));
+// "2026-11-23 klo 08:30"
+const when = j => j.date + (j.time ? (lang === 'fi' ? ' klo ' : ' at ') + j.time : '');
 const jobClass = j => 'job' + (isSoon(j) ? ' soon' : '');
 
 function renderAll() {
@@ -1296,7 +1296,7 @@ function renderAll() {
     <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · ${j.date}</div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
@@ -1311,7 +1311,7 @@ function renderAll() {
     <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · ${j.date} · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)} · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button class="btn outline" onclick="openInspection('${j.id}')">${lang === 'fi' ? 'Tarkastus' : 'Inspection'}</button>
@@ -1361,7 +1361,7 @@ function renderSearch() {
     <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.region ? `<span class="pill">${j.region}</span> · ` : ''}${j.car} · ${j.km} km · ${j.date}</div>
+        <div class="job-meta">${j.region ? `<span class="pill">${j.region}</span> · ` : ''}${j.car} · ${j.km} km · ${when(j)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
