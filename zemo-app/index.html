@@ -22,15 +22,32 @@ iframe.page.active{display:block}
    Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
 (function () {
   var KEY = 'zemoSiirtoState';
+  var SEED_VERSION = 2; // v2: more open jobs across Finland's regions
   function defaults() {
     var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
     function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
+    function job(id, from, to, region, car, km, date, customer) {
+      return { id: id, from: from, to: to, region: region, car: car, km: km, price: price(km), driverPay: Math.round(price(km) * 0.75), status: 'new', date: date, customer: customer, driver: '', inspected: false };
+    }
     return {
+      seedVersion: SEED_VERSION,
       pricing: pricing,
       orders: [
-        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', customer: 'Matti Meikäläinen', driver: '', inspected: false },
-        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', customer: 'Aino Korhonen', driver: '', inspected: false },
-        { id: 'ZS-1041', from: 'Turku', to: 'Pori', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
+        job('ZS-1055', 'Lahti', 'Mikkeli', 'Päijät-Häme', 'BMW 320d (LHT-861)', 120, '2026-12-05', 'Autoliike Laakkonen Oy'),
+        job('ZS-1054', 'Kajaani', 'Kuopio', 'Kainuu', 'Hyundai Tucson (KAJ-433)', 170, '2026-12-04', 'Matti Meikäläinen'),
+        job('ZS-1053', 'Turku', 'Salo', 'Varsinais-Suomi', 'Mazda CX-5 (TKU-275)', 55, '2026-12-03', 'Aino Korhonen'),
+        job('ZS-1052', 'Vantaa', 'Porvoo', 'Uusimaa', 'Tesla Model Y (VAN-640)', 40, '2026-12-02', 'Autoliike Laakkonen Oy'),
+        job('ZS-1051', 'Pori', 'Tampere', 'Satakunta', 'Nissan Leaf (POR-902)', 115, '2026-12-01', 'Matti Meikäläinen'),
+        job('ZS-1050', 'Kotka', 'Lappeenranta', 'Kymenlaakso', 'Skoda Superb (KTK-118)', 105, '2026-11-30', 'Aino Korhonen'),
+        job('ZS-1049', 'Jyväskylä', 'Helsinki', 'Keski-Suomi', 'Audi A4 (JKL-746)', 270, '2026-11-29', 'Autoliike Laakkonen Oy'),
+        job('ZS-1048', 'Vaasa', 'Seinäjoki', 'Pohjanmaa', 'Ford Focus (VAA-330)', 80, '2026-11-28', 'Matti Meikäläinen'),
+        job('ZS-1047', 'Kuopio', 'Joensuu', 'Pohjois-Savo', 'Kia Ceed (KUO-551)', 135, '2026-11-27', 'Aino Korhonen'),
+        job('ZS-1046', 'Rovaniemi', 'Kemi', 'Lappi', 'Toyota RAV4 (ROI-207)', 115, '2026-11-26', 'Autoliike Laakkonen Oy'),
+        job('ZS-1045', 'Tampere', 'Oulu', 'Pirkanmaa', 'Volvo V90 (TRE-889)', 490, '2026-11-26', 'Matti Meikäläinen'),
+        job('ZS-1044', 'Espoo', 'Turku', 'Uusimaa', 'VW Passat (EPS-412)', 165, '2026-11-25', 'Aino Korhonen'),
+        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', region: 'Päijät-Häme', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', customer: 'Matti Meikäläinen', driver: '', inspected: false },
+        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', region: 'Uusimaa', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', customer: 'Aino Korhonen', driver: '', inspected: false },
+        { id: 'ZS-1041', from: 'Turku', to: 'Pori', region: 'Varsinais-Suomi', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
       ],
       drivers: [
         { name: 'Mikko Virtanen', contact: '+358 40 123 4567', licence: 'B', trips: 9, status: 'active' },
@@ -40,8 +57,34 @@ iframe.page.active{display:block}
       inspections: []
     };
   }
+  // Saved data from an older version: add the new demo jobs and regions, keep everything else.
+  function upgrade(s) {
+    var byId = {};
+    s.orders.forEach(function (o) { byId[o.id] = o; });
+    defaults().orders.forEach(function (o) {
+      var cur = byId[o.id];
+      if (cur && cur.from === o.from && cur.to === o.to) {   // same demo job: just add its region
+        if (!cur.region) cur.region = o.region;
+        return;
+      }
+      if (cur) {                                             // number already used by another order
+        var n = 1056;
+        while (byId['ZS-' + n]) n++;
+        o.id = 'ZS-' + n;
+      }
+      s.orders.push(o);
+      byId[o.id] = o;
+    });
+    s.seedVersion = SEED_VERSION;
+  }
   function get() {
-    try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pricing && s.orders) return s; } catch (e) {}
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.pricing && s.orders) {
+        if (s.seedVersion !== SEED_VERSION) { upgrade(s); save(s); }
+        return s;
+      }
+    } catch (e) {}
     return defaults();
   }
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
@@ -1176,7 +1219,10 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
     <div class="card">
       <h2 data-fi="Hae tehtäviä" data-en="Search Jobs">Hae tehtäviä</h2>
       <p class="sub" data-fi="Hae avoimia siirtoja kaupungin, tilausnumeron tai auton mukaan." data-en="Search open transfers by city, order number or car.">Hae avoimia siirtoja kaupungin, tilausnumeron tai auton mukaan.</p>
-      <div class="field" style="margin-bottom:16px"><input type="search" id="searchInput" placeholder="Helsinki, ZS-1042, Toyota…" autocomplete="off"></div>
+      <div class="fields" style="margin-bottom:16px">
+        <div class="field"><input type="search" id="searchInput" placeholder="Helsinki, Lappi, ZS-1042, Toyota…" autocomplete="off"></div>
+        <div class="field"><select id="regionFilter" aria-label="Alue"></select></div>
+      </div>
       <div id="searchResults"></div>
     </div>
   </section>
@@ -1291,12 +1337,19 @@ function renderAll() {
 function renderSearch() {
   const q = ($('searchInput').value || '').trim().toLowerCase();
   const avail = ZemoStore.get().orders.filter(o => o.status === 'new');
-  const hits = q ? avail.filter(j => [j.id, j.from, j.to, j.car, j.date].join(' ').toLowerCase().includes(q)) : avail;
+  // Region filter: all regions that have open jobs.
+  const regions = [...new Set(avail.map(j => j.region).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fi'));
+  const chosen = regions.includes($('regionFilter').value) ? $('regionFilter').value : '';
+  $('regionFilter').innerHTML = `<option value="">${lang === 'fi' ? 'Kaikki alueet' : 'All regions'} (${avail.length})</option>` +
+    regions.map(r => `<option value="${r}" ${r === chosen ? 'selected' : ''}>${r} (${avail.filter(j => j.region === r).length})</option>`).join('');
+  const hits = avail
+    .filter(j => !chosen || j.region === chosen)
+    .filter(j => !q || [j.id, j.from, j.to, j.region, j.car, j.date].join(' ').toLowerCase().includes(q));
   $('searchResults').innerHTML = hits.length ? hits.map(j => `
     <div class="job">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · ${j.date}</div>
+        <div class="job-meta">${j.region ? `<span class="pill">${j.region}</span> · ` : ''}${j.car} · ${j.km} km · ${j.date}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
@@ -1306,6 +1359,7 @@ function renderSearch() {
   `).join('') : `<p class="sub">${lang === 'fi' ? 'Ei hakutuloksia.' : 'No results.'}</p>`;
 }
 $('searchInput').addEventListener('input', renderSearch);
+$('regionFilter').addEventListener('change', renderSearch);
 
 window.openInspection = function(id) {
   $('inspectJobSelect').value = id;
