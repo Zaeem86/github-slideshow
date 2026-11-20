@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" id="vp" content="width=device-width,initial-scale=1">
-<title>Zemo Siirto</title>
+<title>ZEMO</title>
 <!--
   Zemo Siirto – all pages in one file.
-  Each original page (index, customer, driver, admin) is stored unchanged below and shown in its own frame,
-  exactly as if opened as a separate file. Open a page with: #index (default) · #customer · #driver · #admin
+  Each page is stored below and shown in its own frame, exactly as if opened as a separate file.
+  #index (default) = main page · #start = driver swipe + login (the original index.html) · #customer · #driver · #admin
   Only additions: shared.js (rebuilt, it was not included) and link handling between the pages.
 -->
 <style>
@@ -127,7 +127,7 @@ iframe.page.active{display:block}
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
-    var m = a.getAttribute('href').match(/^(index|customer|driver|admin)\.html(?:\?.*)?$/);
+    var m = a.getAttribute('href').match(/^(index|start|customer|driver|admin)\.html(?:\?.*)?$/);
     if (!m) return;
     e.preventDefault();
     parent.postMessage({ zemoGo: m[1] }, '*');
@@ -136,6 +136,318 @@ iframe.page.active{display:block}
 </script>
 
 <script type="text/html" id="page-index">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZEMO — Auton siirto Suomessa</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#ffffff;--soft:#f5f6f8;--ink:#121a22;--muted:#5b6b79;--line:#e3e7ec;
+  --orange:#f28a45;--orange-dark:#d9692a;--on-orange:#17110d;
+  --navy:#0f171f;--navy-ink:#f4f7fa;--navy-muted:#a9b7c3;--field:#ffffff
+}
+:root[data-theme="dark"]{
+  --bg:#0b1015;--soft:#131b23;--ink:#f4f7fa;--muted:#9baab7;--line:#293642;
+  --navy:#070b0f;--field:#131b23
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,-apple-system,Arial,sans-serif;overflow-x:hidden}
+button,input{font:inherit}
+button{cursor:pointer}
+a{color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.hidden{display:none!important}
+
+/* Header */
+.top{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;font-size:22px;letter-spacing:.08em}
+.brand-logo{width:56px;aspect-ratio:520/350;border-radius:8px;background:url(data:image/webp;base64,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) center/cover no-repeat}
+.top-actions{display:flex;align-items:center;gap:6px}
+.icon-btn{background:none;border:0;color:var(--ink);width:40px;height:40px;display:grid;place-items:center;border-radius:10px}
+.icon-btn:hover{background:var(--soft)}
+.icon-btn svg{width:22px;height:22px}
+.lang-btn{width:auto;padding:0 8px;font-weight:800;font-size:13px;gap:4px;display:flex;align-items:center}
+
+/* Menu */
+.menu{position:fixed;inset:64px 0 0 0;z-index:39;background:var(--bg);padding:40px 28px;display:flex;flex-direction:column;gap:28px}
+.menu a{font-size:34px;font-weight:600;text-decoration:none;color:var(--ink)}
+.menu a.current{color:var(--orange)}
+.menu a.small{font-size:18px;color:var(--muted);margin-top:auto}
+
+/* Hero */
+.hero{padding-top:34px;padding-bottom:10px;text-align:center}
+.hero h1{font-size:clamp(28px,6.5vw,46px);line-height:1.18;margin:0 0 14px;font-weight:800}
+.hero h1 .hl{color:var(--orange);text-decoration:underline;text-underline-offset:5px}
+.hero p.lead{color:var(--muted);margin:0 auto 26px;max-width:620px;font-size:15px}
+.calc{text-align:left;max-width:560px;margin:0 auto}
+.calc label{display:block;font-weight:800;font-size:14px;margin:14px 0 8px}
+.calc input{width:100%;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--field);color:var(--ink);font-size:15px}
+.calc input:focus{outline:2px solid var(--orange);border-color:transparent}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--orange);color:var(--on-orange);border:0;border-radius:12px;padding:14px 22px;font-weight:800;text-decoration:none}
+.btn:hover{background:var(--orange-dark)}
+.btn.block{width:100%;margin-top:18px}
+.calc-msg{color:#d64545;font-size:13px;margin-top:8px;min-height:1px}
+.result{margin-top:16px;border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--soft)}
+.result-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:14px;color:var(--muted)}
+.result-row b{color:var(--ink)}
+.result-total{font-size:24px;font-weight:900;color:var(--ink)}
+.result small{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+
+.steps{max-width:560px;margin:28px auto 0;text-align:left;display:grid;gap:16px}
+.step{display:flex;gap:14px;align-items:flex-start}
+.num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--orange);color:var(--on-orange);font-weight:900;font-size:13px;display:grid;place-items:center}
+.step b{display:block}
+.step span{color:var(--muted);font-size:14px}
+
+#map{height:320px;max-width:560px;margin:28px auto 0;border-radius:14px;border:1px solid var(--line);background:var(--soft);z-index:1}
+.trust{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:14px;margin:18px 0 40px}
+.trust svg{width:18px;height:18px;color:var(--orange)}
+
+/* Why ZEMO */
+.why{padding:30px 0 60px}
+.why h2{font-size:clamp(26px,5.5vw,36px);margin:0 0 26px;line-height:1.2}
+.why h2 span{color:var(--orange)}
+.why ol{list-style:none;margin:0;padding:0;display:grid;gap:22px}
+.why li{display:flex;gap:16px;color:var(--muted);font-size:16px}
+
+/* Dark band */
+.band{background:var(--navy);color:var(--navy-ink);padding:60px 0;border-radius:40px 40px 0 0}
+.band section{padding:20px 0 34px}
+.kicker{color:var(--orange);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.band h2{font-size:clamp(28px,6vw,38px);line-height:1.2;margin:10px 0 16px}
+.band p{color:var(--navy-muted);max-width:620px;margin:0 0 26px}
+
+/* Footer */
+footer{padding:40px 0 30px;border-top:1px solid var(--line)}
+.foot-brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:28px;letter-spacing:.08em}
+.foot-brand .brand-logo{width:72px}
+footer .tag{color:var(--muted);font-size:14px;margin:10px 0 18px}
+.foot-links{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:14px;margin-bottom:20px}
+.foot-links a{text-decoration:none}
+.foot-links a:hover{color:var(--orange)}
+.contact{display:flex;align-items:center;gap:10px;font-size:14px;margin:8px 0}
+.contact svg{width:18px;height:18px;color:var(--orange)}
+.copy{border-top:1px solid var(--line);margin-top:22px;padding-top:16px;color:var(--muted);font-size:12px}
+
+@media(min-width:900px){
+  .why ol{grid-template-columns:1fr 1fr}
+  .band .wrap{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#etusivu" aria-label="ZEMO"><span class="brand-logo"></span>ZEMO</a>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" aria-label="Vaihda teema">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="icon-btn lang-btn" id="langBtn" aria-label="Kieli / Language">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        <span id="langLabel">FI</span>
+      </button>
+      <button class="icon-btn" id="menuBtn" aria-label="Valikko" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<nav class="menu hidden" id="menu">
+  <a href="#etusivu" data-fi="Etusivu" data-en="Home">Etusivu</a>
+  <a href="#yrityksille" data-fi="Yrityksille" data-en="For businesses">Yrityksille</a>
+  <a href="#kuljettajille" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</a>
+  <a href="#meista" data-fi="Meistä" data-en="About us">Meistä</a>
+  <a class="small" href="start.html" data-fi="Kuljettajan kirjautuminen →" data-en="Driver login →">Kuljettajan kirjautuminen →</a>
+</nav>
+
+<main id="etusivu">
+  <section class="hero wrap">
+    <h1><span data-fi="Nopea ja luotettava" data-en="Fast and reliable">Nopea ja luotettava</span> <span class="hl" data-fi="auton siirto" data-en="car transfer">auton siirto</span> <span data-fi="koko Suomessa" data-en="all over Finland">koko Suomessa</span></h1>
+    <p class="lead" data-fi="ZEMO siirtää autosi perille: tarkastettu kuljettaja noutaa auton sovittuna aikana ja ajaa sen määränpäähän. Palvelemme yksityisasiakkaita, autoliikkeitä sekä leasing- ja vuokrayhtiöitä." data-en="ZEMO gets your car where it needs to be: a vetted driver picks it up at the agreed time and drives it to its destination. We serve private customers, car dealers and leasing and rental companies.">ZEMO siirtää autosi perille: tarkastettu kuljettaja noutaa auton sovittuna aikana ja ajaa sen määränpäähän. Palvelemme yksityisasiakkaita, autoliikkeitä sekä leasing- ja vuokrayhtiöitä.</p>
+
+    <form class="calc" id="calcForm" novalidate>
+      <label for="from" data-fi="Nouto-osoite" data-en="Pickup address">Nouto-osoite</label>
+      <input id="from" list="cities" autocomplete="off" data-fi-ph="esim. Helsinki" data-en-ph="e.g. Helsinki" placeholder="esim. Helsinki">
+      <label for="to" data-fi="Toimitusosoite" data-en="Delivery address">Toimitusosoite</label>
+      <input id="to" list="cities" autocomplete="off" data-fi-ph="esim. Tampere" data-en-ph="e.g. Tampere" placeholder="esim. Tampere">
+      <datalist id="cities"></datalist>
+      <div class="calc-msg" id="calcMsg"></div>
+      <button class="btn block" type="submit" data-fi="Laske hinta" data-en="Calculate price">Laske hinta</button>
+      <div class="result hidden" id="result">
+        <div class="result-row"><span id="resRoute"></span><b id="resKm"></b></div>
+        <div class="result-row"><span data-fi="Arviohinta" data-en="Estimated price">Arviohinta</span><span class="result-total" id="resPrice"></span></div>
+        <small data-fi="Arvio perustuu kaupunkien väliseen ajomatkaan. Lopullinen hinta vahvistetaan tilauksessa." data-en="Estimate based on the driving distance between the cities. The final price is confirmed in the order.">Arvio perustuu kaupunkien väliseen ajomatkaan. Lopullinen hinta vahvistetaan tilauksessa.</small>
+        <a class="btn block" href="customer.html" data-fi="Tilaa siirto →" data-en="Order a transfer →">Tilaa siirto →</a>
+      </div>
+    </form>
+
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><b data-fi="Syötä osoitteet" data-en="Enter the addresses">Syötä osoitteet</b><span data-fi="Kerro, mistä auto noudetaan ja minne se viedään." data-en="Tell us where the car is picked up and where it goes.">Kerro, mistä auto noudetaan ja minne se viedään.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b data-fi="Saat hinta-arvion heti" data-en="Get an instant estimate">Saat hinta-arvion heti</b><span data-fi="Näet hinnan ennen tilausta, ilman yllätyksiä." data-en="See the price before you order, with no surprises.">Näet hinnan ennen tilausta, ilman yllätyksiä.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b data-fi="Tilaa – me hoidamme loput" data-en="Order – we handle the rest">Tilaa – me hoidamme loput</b><span data-fi="Seuraa siirtoa reaaliajassa noudosta luovutukseen." data-en="Follow the transfer live from pickup to delivery.">Seuraa siirtoa reaaliajassa noudosta luovutukseen.</span></div></div>
+    </div>
+
+    <div id="map" role="img" aria-label="Kartta"></div>
+    <div class="trust">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+      <span data-fi="Digitaalinen tarkastus noudossa ja luovutuksessa" data-en="Digital inspection at pickup and delivery">Digitaalinen tarkastus noudossa ja luovutuksessa</span>
+    </div>
+  </section>
+
+  <section class="why wrap" id="meista">
+    <h2>ZEMO — <span data-fi="liikkeellä puolestasi" data-en="on the move for you">liikkeellä puolestasi</span></h2>
+    <ol>
+      <li><div class="num">1</div><div data-fi="Asiakkaitamme ovat yksityishenkilöt, autoliikkeet, leasing-yhtiöt ja autovuokraamot, jotka tarvitsevat auton siirron nopeasti." data-en="Our customers are private people, car dealers, leasing companies and rental firms who need a car moved quickly.">Asiakkaitamme ovat yksityishenkilöt, autoliikkeet, leasing-yhtiöt ja autovuokraamot, jotka tarvitsevat auton siirron nopeasti.</div></li>
+      <li><div class="num">2</div><div data-fi="Ajamme siirtoja kaikkialla Suomessa – Helsingistä Rovaniemelle." data-en="We drive transfers all over Finland – from Helsinki to Rovaniemi.">Ajamme siirtoja kaikkialla Suomessa – Helsingistä Rovaniemelle.</div></li>
+      <li><div class="num">3</div><div data-fi="Jokainen auto tarkastetaan ja kuvataan noudossa ja luovutuksessa." data-en="Every car is inspected and photographed at pickup and delivery.">Jokainen auto tarkastetaan ja kuvataan noudossa ja luovutuksessa.</div></li>
+      <li><div class="num">4</div><div data-fi="Asiakaspalvelumme palvelee suomeksi ja englanniksi." data-en="Our customer service speaks Finnish and English.">Asiakaspalvelumme palvelee suomeksi ja englanniksi.</div></li>
+    </ol>
+  </section>
+
+  <div class="band">
+    <div class="wrap">
+      <section id="yrityksille">
+        <div class="kicker" data-fi="Yrityksille" data-en="For businesses">Yrityksille</div>
+        <h2 data-fi="Anna autojen siirrot ZEMOn hoidettavaksi" data-en="Leave your car transfers to ZEMO">Anna autojen siirrot ZEMOn hoidettavaksi</h2>
+        <p data-fi="Säästä aikaa ja keskity omaan liiketoimintaasi. Tilaat siirrot yhdestä paikasta, näet niiden tilan reaaliajassa ja saat laskun selkeästi." data-en="Save time and focus on your own business. Order transfers in one place, follow them live and get a clear invoice.">Säästä aikaa ja keskity omaan liiketoimintaasi. Tilaat siirrot yhdestä paikasta, näet niiden tilan reaaliajassa ja saat laskun selkeästi.</p>
+        <a class="btn" href="customer.html" data-fi="Tule asiakkaaksi →" data-en="Become a customer →">Tule asiakkaaksi →</a>
+      </section>
+      <section id="kuljettajille">
+        <div class="kicker" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</div>
+        <h2 data-fi="Aja kanssamme" data-en="Drive with us">Aja kanssamme</h2>
+        <p data-fi="Valitse itse sinulle sopivat siirrot, aja omaan tahtiisi ja seuraa ansioitasi sovelluksessa." data-en="Choose the transfers that suit you, drive at your own pace and follow your earnings in the app.">Valitse itse sinulle sopivat siirrot, aja omaan tahtiisi ja seuraa ansioitasi sovelluksessa.</p>
+        <a class="btn" href="start.html" data-fi="Kuljettajan kirjautuminen →" data-en="Driver login →">Kuljettajan kirjautuminen →</a>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-brand"><span class="brand-logo"></span>ZEMO</div>
+    <div class="tag" data-fi="Luotettava ja nopea auton siirto Suomessa." data-en="Reliable and fast car transfers in Finland.">Luotettava ja nopea auton siirto Suomessa.</div>
+    <div class="foot-links">
+      <a href="#yrityksille" data-fi="Yrityksille" data-en="For businesses">Yrityksille</a>
+      <a href="#kuljettajille" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</a>
+      <a href="#meista" data-fi="Meistä" data-en="About us">Meistä</a>
+    </div>
+    <a class="contact" href="mailto:tuki@zemosiirto.fi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>tuki@zemosiirto.fi
+    </a>
+    <div class="copy">© 2026 ZEMO. <span data-fi="Kaikki oikeudet pidätetään." data-en="All rights reserved.">Kaikki oikeudet pidätetään.</span></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>
+<script src="shared.js"><\/script>
+<script>
+const $ = id => document.getElementById(id);
+let lang = 'fi';
+
+// Finnish cities for the instant price (lat, lon).
+const CITIES = {
+  'Helsinki': [60.1699, 24.9384], 'Espoo': [60.2055, 24.6559], 'Vantaa': [60.2934, 25.0378], 'Porvoo': [60.3932, 25.6650],
+  'Turku': [60.4518, 22.2666], 'Salo': [60.3831, 23.1286], 'Tampere': [61.4978, 23.7610], 'Hämeenlinna': [60.9959, 24.4643],
+  'Lahti': [60.9827, 25.6612], 'Kotka': [60.4664, 26.9458], 'Lappeenranta': [61.0587, 28.1887], 'Mikkeli': [61.6886, 27.2723],
+  'Pori': [61.4851, 21.7974], 'Rauma': [61.1272, 21.5112], 'Jyväskylä': [62.2426, 25.7473], 'Kuopio': [62.8924, 27.6770],
+  'Joensuu': [62.6010, 29.7636], 'Savonlinna': [61.8687, 28.8789], 'Seinäjoki': [62.7903, 22.8403], 'Vaasa': [63.0951, 21.6165],
+  'Kokkola': [63.8385, 23.1307], 'Oulu': [65.0121, 25.4651], 'Kajaani': [64.2273, 27.7285], 'Kemi': [65.7364, 24.5637],
+  'Tornio': [65.8481, 24.1466], 'Rovaniemi': [66.5039, 25.7294]
+};
+$('cities').innerHTML = Object.keys(CITIES).map(c => `<option value="${c}">`).join('');
+const findCity = v => Object.keys(CITIES).find(c => c.toLowerCase() === (v || '').trim().split(',')[0].trim().toLowerCase());
+
+// Road distance estimate: straight line × 1.12 (close to real Finnish road distances).
+function roadKm(a, b) {
+  const R = 6371, rad = d => d * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)) * 1.12);
+}
+
+// Map of Finland (only if the map library loaded).
+let map = null, routeLayer = null;
+if (window.L) {
+  map = L.map('map', { scrollWheelZoom: false }).setView([64.5, 26], 4);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+} else {
+  $('map').classList.add('hidden');
+}
+
+$('calcForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const a = findCity($('from').value), b = findCity($('to').value);
+  $('calcMsg').textContent = '';
+  if (!a || !b || a === b) {
+    $('result').classList.add('hidden');
+    $('calcMsg').textContent = lang === 'fi' ? 'Valitse kaksi eri kaupunkia listasta.' : 'Choose two different cities from the list.';
+    return;
+  }
+  const km = roadKm(CITIES[a], CITIES[b]);
+  const p = ZemoStore.get().pricing;
+  const price = p.base + p.rate * km + p.fee;
+  $('resRoute').textContent = a + ' → ' + b;
+  $('resKm').textContent = '≈ ' + km + ' km';
+  $('resPrice').textContent = ZemoStore.fmtEur(price);
+  $('result').classList.remove('hidden');
+  if (map) {
+    if (routeLayer) routeLayer.remove();
+    routeLayer = L.featureGroup([
+      L.circleMarker(CITIES[a], { radius: 7, color: '#f28a45', fillOpacity: 1 }).bindTooltip(a),
+      L.circleMarker(CITIES[b], { radius: 7, color: '#f28a45', fillOpacity: 1 }).bindTooltip(b),
+      L.polyline([CITIES[a], CITIES[b]], { color: '#f28a45', weight: 4, dashArray: '8 8' })
+    ]).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+  }
+});
+
+// Menu
+function closeMenu() { $('menu').classList.add('hidden'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
+$('menuBtn').addEventListener('click', () => {
+  const open = $('menu').classList.toggle('hidden') === false;
+  $('menuBtn').setAttribute('aria-expanded', String(open));
+});
+document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  closeMenu();
+  const id = a.getAttribute('href').slice(1);
+  document.querySelectorAll('#menu a').forEach(m => m.classList.toggle('current', m === a));
+  if (id === 'etusivu') window.scrollTo({ top: 0, behavior: 'smooth' });
+  else { const t = $(id); window.scrollTo({ top: t.getBoundingClientRect().top + window.scrollY - 74, behavior: 'smooth' }); }
+}));
+document.querySelector('#menu a').classList.add('current');
+
+// Theme (light / dark), remembered on this device.
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('zemoTheme', t); } catch (e) {}
+}
+try { if (localStorage.getItem('zemoTheme') === 'dark') setTheme('dark'); } catch (e) {}
+$('themeBtn').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+// Language FI / EN
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langLabel').textContent = lang.toUpperCase();
+  document.querySelectorAll('[data-fi]').forEach(el => { el.textContent = el.dataset[lang]; });
+  document.querySelectorAll('[data-fi-ph]').forEach(el => { el.placeholder = el.dataset[lang + 'Ph']; });
+  if ($('calcMsg').textContent) $('calcForm').requestSubmit();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-start">
 <!doctype html>
 <html lang="fi">
 <head>
@@ -1517,7 +1829,7 @@ $('loginForm').addEventListener('submit', e => {
 // Next sign-in starts on Koti; after logging out, go back to the swipe screen of the main page.
 $('logoutBtn')?.addEventListener('click', () => {
   switchTab('available');
-  if (window.parent !== window) parent.postMessage({ zemoGo: 'index', splash: true }, '*');
+  if (window.parent !== window) parent.postMessage({ zemoGo: 'start', splash: true }, '*');
   else window.location.href = 'index.html';
 });
 $('logoutBtn')?.addEventListener('click', () => {
@@ -2113,7 +2425,7 @@ $('langBtn').addEventListener('click', () => {
 
 <script>
 (function () {
-  var NAMES = ['index', 'customer', 'driver', 'admin'];
+  var NAMES = ['index', 'start', 'customer', 'driver', 'admin'];
   var frames = {};
   // Undo the storage escapes. Written split up so this script never contains a closing script tag or comment opener.
   var CLOSE = '<' + '/script', OPEN_COMMENT = '<' + '!--';
@@ -2162,8 +2474,8 @@ $('langBtn').addEventListener('click', () => {
   window.addEventListener('message', function (e) {
     if (!e.data || NAMES.indexOf(e.data.zemoGo) < 0) return;
     if (e.data.login) pendingLogin = e.data.zemoGo;
-    // After a driver logs out, load the main page fresh so it looks exactly like the first start.
-    if (e.data.splash && frames.index) { frames.index.el.remove(); delete frames.index; }
+    // After a driver logs out, load the swipe page fresh so it looks exactly like the first start.
+    if (e.data.splash && frames.start) { frames.start.el.remove(); delete frames.start; }
     if (location.hash === '#' + e.data.zemoGo) show(); else location.hash = e.data.zemoGo;
   });
   window.addEventListener('hashchange', show);
