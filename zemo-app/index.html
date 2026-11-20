@@ -1040,6 +1040,8 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 .bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;color:var(--muted);font-size:11px;font-weight:700;padding:6px 2px;border-radius:10px}
 .bottom-nav button svg{width:22px;height:22px}
 .bottom-nav button.active{color:var(--orange)}
+/* Job whose date is near (see SOON_DAYS) */
+.job.soon{border:2px solid var(--red);box-shadow:0 0 0 3px rgba(242,107,107,.15)}
 #appView{padding-bottom:96px}
 .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
 @media(max-width:820px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr 1fr}}
@@ -1272,16 +1274,26 @@ function showToast(msg) {
   setTimeout(() => t.style.display = 'none', 3200);
 }
 
+// Jobs are listed by date (soonest first); a job due within SOON_DAYS days (or overdue) gets a red frame.
+const SOON_DAYS = 3;
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(dateStr + 'T00:00:00') - today) / 864e5);
+}
+const isSoon = j => !!j.date && daysUntil(j.date) <= SOON_DAYS;
+const byTime = (x, y) => (x.date || '9999').localeCompare(y.date || '9999') || String(x.id).localeCompare(String(y.id));
+const jobClass = j => 'job' + (isSoon(j) ? ' soon' : '');
+
 function renderAll() {
   const state = ZemoStore.get();
-  const avail = state.orders.filter(o => o.status === 'new');
-  const mine = state.orders.filter(o => o.status === 'transit' && o.driver === DRIVER_NAME);
+  const avail = state.orders.filter(o => o.status === 'new').sort(byTime);
+  const mine = state.orders.filter(o => o.status === 'transit' && o.driver === DRIVER_NAME).sort(byTime);
 
   $('availCount').textContent = avail.length;
   $('myActiveCount').textContent = mine.length;
 
   $('availableList').innerHTML = avail.length ? avail.map(j => `
-    <div class="job">
+    <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
         <div class="job-meta">${j.car} · ${j.km} km · ${j.date}</div>
@@ -1296,10 +1308,10 @@ function renderAll() {
   renderSearch();
 
   $('myJobsList').innerHTML = mine.length ? mine.map(j => `
-    <div class="job">
+    <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${j.date} · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button class="btn outline" onclick="openInspection('${j.id}')">${lang === 'fi' ? 'Tarkastus' : 'Inspection'}</button>
@@ -1336,7 +1348,7 @@ function renderAll() {
 // Hae: search open jobs by order number, city, car or date.
 function renderSearch() {
   const q = ($('searchInput').value || '').trim().toLowerCase();
-  const avail = ZemoStore.get().orders.filter(o => o.status === 'new');
+  const avail = ZemoStore.get().orders.filter(o => o.status === 'new').sort(byTime);
   // Region filter: all regions that have open jobs.
   const regions = [...new Set(avail.map(j => j.region).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fi'));
   const chosen = regions.includes($('regionFilter').value) ? $('regionFilter').value : '';
@@ -1346,7 +1358,7 @@ function renderSearch() {
     .filter(j => !chosen || j.region === chosen)
     .filter(j => !q || [j.id, j.from, j.to, j.region, j.car, j.date].join(' ').toLowerCase().includes(q));
   $('searchResults').innerHTML = hits.length ? hits.map(j => `
-    <div class="job">
+    <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
         <div class="job-meta">${j.region ? `<span class="pill">${j.region}</span> · ` : ''}${j.car} · ${j.km} km · ${j.date}</div>
