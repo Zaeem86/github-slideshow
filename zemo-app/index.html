@@ -97,7 +97,12 @@ iframe.page.active{display:block}
   function startTime(o) { return new Date(o.date + 'T' + (o.time || '23:59') + ':00'); }
   // An open job whose pickup time has passed without a driver: removed from the driver's lists, handled by admin.
   function isExpired(o) { return o.status === 'new' && !!o.date && startTime(o).getTime() < Date.now(); }
-  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, startTime: startTime, isExpired: isExpired };
+  // "2026-11-23" → "23.11.2026"
+  function fmtDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? m[3] + '.' + m[2] + '.' + m[1] : (iso || '');
+  }
+  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, fmtDate: fmtDate, startTime: startTime, isExpired: isExpired };
 })();
 </script>
 <script type="text/plain" id="links-js">
@@ -824,8 +829,8 @@ function updateCalc() {
 }
 $('inKm').addEventListener('input', updateCalc);
 
-// "2026-11-22 klo 09:00"
-const when = o => o.date + (o.time ? (lang === 'fi' ? ' klo ' : ' at ') + o.time : '');
+// "22.11.2026 klo 09:00"
+const when = o => ZemoStore.fmtDate(o.date) + (o.time ? (lang === 'fi' ? ' klo ' : ' at ') + o.time : '');
 
 function statusBadge(st, o) {
   // Pickup time passed without a driver (handled by admin).
@@ -1304,8 +1309,8 @@ const SOON_HOURS = 24;
 const startOf = j => ZemoStore.startTime(j);
 const isSoon = j => !!j.date && (startOf(j) - Date.now()) / 36e5 <= SOON_HOURS;
 const byTime = (x, y) => ((x.date || '9999') + (x.time || '00:00')).localeCompare((y.date || '9999') + (y.time || '00:00')) || String(x.id).localeCompare(String(y.id));
-// "2026-11-23 klo 08:30"
-const when = j => j.date + (j.time ? (lang === 'fi' ? ' klo ' : ' at ') + j.time : '');
+// "23.11.2026 klo 08:30"
+const when = j => ZemoStore.fmtDate(j.date) + (j.time ? (lang === 'fi' ? ' klo ' : ' at ') + j.time : '');
 const jobClass = j => 'job' + (isSoon(j) ? ' soon' : '');
 
 function renderAll() {
@@ -1381,7 +1386,7 @@ function renderSearch() {
     regions.map(r => `<option value="${r}" ${r === chosen ? 'selected' : ''}>${r} (${avail.filter(j => j.region === r).length})</option>`).join('');
   const hits = avail
     .filter(j => !chosen || j.region === chosen)
-    .filter(j => !q || [j.id, j.from, j.to, j.region, j.car, j.date].join(' ').toLowerCase().includes(q));
+    .filter(j => !q || [j.id, j.from, j.to, j.region, j.car, j.date, ZemoStore.fmtDate(j.date)].join(' ').toLowerCase().includes(q));
   $('searchResults').innerHTML = hits.length ? hits.map(j => `
     <div class="${jobClass(j)}">
       <div>
@@ -1854,7 +1859,7 @@ function renderAll() {
     <tr>
       <td><b>#${o.id}</b></td>
       <td>${o.from} → ${o.to}<br><small style="color:var(--muted)">${o.car} · ${o.km} km</small></td>
-      <td><span class="pill red">${o.date}${o.time ? ' klo ' + o.time : ''}</span></td>
+      <td><span class="pill red">${ZemoStore.fmtDate(o.date)}${o.time ? ' klo ' + o.time : ''}</span></td>
       <td><div style="display:flex;gap:6px;flex-wrap:wrap">
         <input class="res-input" type="date" id="resDate-${i}" value="${tomorrow}" aria-label="Date">
         <input class="res-input" type="time" id="resTime-${i}" value="${o.time || '09:00'}" aria-label="Time">
