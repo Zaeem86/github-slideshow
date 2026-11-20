@@ -545,7 +545,9 @@ $('forgotBtn').addEventListener('click', () => {
 
 $('loginForm').addEventListener('submit', e => {
   e.preventDefault();
-  // Kirjaudu → driver page (driver.html), signed in.
+  // Kirjaudu → driver page (driver.html), signed in. The password is not kept in the field.
+  $('passwordInput').value = '';
+  checkInputs();
   if (window.parent !== window) parent.postMessage({ zemoGo: 'driver', login: true }, '*');
   else window.location.href = 'driver.html';
 });
@@ -1479,8 +1481,12 @@ $('loginForm').addEventListener('submit', e => {
   showToast(lang === 'fi' ? 'Tervetuloa kuljettajaportaaliin!' : 'Welcome to Driver Portal!');
 });
 
-// Next sign-in starts on Koti.
-$('logoutBtn')?.addEventListener('click', () => switchTab('available'));
+// Next sign-in starts on Koti; after logging out, go back to the main page.
+$('logoutBtn')?.addEventListener('click', () => {
+  switchTab('available');
+  if (window.parent !== window) parent.postMessage({ zemoGo: 'index' }, '*');
+  else window.location.href = 'index.html';
+});
 $('logoutBtn')?.addEventListener('click', () => {
   $('appView').classList.add('hidden');
   $('logoutBtn')?.classList.add('hidden');
