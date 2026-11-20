@@ -22,7 +22,7 @@ iframe.page.active{display:block}
    Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
 (function () {
   var KEY = 'zemoSiirtoState';
-  var SEED_VERSION = 3; // v2: more open jobs across Finland's regions · v3: pickup times
+  var SEED_VERSION = 4; // v2: more open jobs across Finland's regions · v3: pickup times · v4: driver news
   function defaults() {
     var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
     function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
@@ -54,7 +54,22 @@ iframe.page.active{display:block}
         { name: 'Laura Nieminen', contact: 'laura.nieminen@esimerkki.fi', licence: 'B', trips: 0, status: 'pending' }
       ],
       payouts: [],
-      inspections: []
+      inspections: [],
+      // News and decisions shown to drivers on Koti (newest first). type: 'decision' | 'news'
+      news: [
+        { id: 'N-4', date: '2026-11-19', type: 'decision',
+          fi: { title: 'Talvirenkaat tarkistettava ennen noutoa', text: 'Joulu–helmikuussa autossa on oltava talvirenkaat. Jos niitä ei ole, älä lähde ajoon vaan ilmoita tuelle.' },
+          en: { title: 'Check winter tyres before pickup', text: 'From December to February the car must have winter tyres. If it does not, do not drive – contact support.' } },
+        { id: 'N-3', date: '2026-11-17', type: 'decision',
+          fi: { title: 'Vähintään 4 kuvaa jokaisessa tarkastuksessa', text: 'Ota kuva autosta joka puolelta sekä noudossa että luovutuksessa.' },
+          en: { title: 'At least 4 photos in every inspection', text: 'Photograph the car from every side at both pickup and delivery.' } },
+        { id: 'N-2', date: '2026-11-14', type: 'news',
+          fi: { title: 'Uusia tehtäviä Lappiin ja Kainuuseen', text: 'Siirtoja on nyt tarjolla myös Rovaniemen ja Kajaanin alueilla. Katso Hae-välilehti.' },
+          en: { title: 'New jobs in Lapland and Kainuu', text: 'Transfers are now available around Rovaniemi and Kajaani too. See the Search tab.' } },
+        { id: 'N-1', date: '2026-11-10', type: 'news',
+          fi: { title: 'Tervetuloa ZEMO-kuljettajaksi', text: 'Tältä kortilta löydät jatkossa uutiset ja uudet päätökset.' },
+          en: { title: 'Welcome to ZEMO', text: 'This card shows the latest news and new decisions.' } }
+      ]
     };
   }
   // Saved data from an older version: add the new demo jobs and regions, keep everything else.
@@ -76,6 +91,7 @@ iframe.page.active{display:block}
       s.orders.push(o);
       byId[o.id] = o;
     });
+    if (!s.news) s.news = defaults().news;
     s.seedVersion = SEED_VERSION;
   }
   function get() {
@@ -1075,7 +1091,12 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 /* Job whose date is near (see SOON_DAYS) */
 .stat-link{cursor:pointer}
 .stat-link:hover{border-color:var(--orange)}
-#availableCard{scroll-margin-top:84px}
+.news-item{padding:14px 0;border-bottom:1px solid var(--line)}
+.news-item:last-child{border-bottom:0;padding-bottom:0}
+.news-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.news-date{color:var(--muted);font-size:12px}
+.news-title{font-weight:800;font-size:15px;margin-bottom:4px}
+.news-text{color:var(--muted);font-size:13px;line-height:1.5}
 .job.soon{border:2px solid var(--red);box-shadow:0 0 0 3px rgba(242,107,107,.15)}
 #appView{padding-bottom:96px}
 .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
@@ -1117,10 +1138,10 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
       <div class="stat"><b id="myActiveCount">0</b><span data-fi="Omat aktiiviset" data-en="My active jobs">Omat aktiiviset</span></div>
       <div class="stat"><b style="color:var(--green)">4.9 ★</b><span data-fi="Kuljettaja-arvio" data-en="Driver rating">Kuljettaja-arvio</span></div>
     </div>
-    <div class="card" id="availableCard">
-      <h2 data-fi="Avoimet siirtotehtävät" data-en="Available Relocation Jobs">Avoimet siirtotehtävät</h2>
-      <p class="sub" data-fi="Valitse sopiva siirto ja siirrä se omiin tehtäviisi." data-en="Accept an available transfer to move it to your active jobs.">Valitse sopiva siirto ja siirrä se omiin tehtäviisi.</p>
-      <div id="availableList"></div>
+    <div class="card" id="newsCard">
+      <h2 data-fi="Uutiset ja päätökset" data-en="News and decisions">Uutiset ja päätökset</h2>
+      <p class="sub" data-fi="Uusimmat tiedotteet ja ohjeet kuljettajille." data-en="The latest announcements and instructions for drivers.">Uusimmat tiedotteet ja ohjeet kuljettajille.</p>
+      <div id="newsList"></div>
     </div>
   </section>
 
@@ -1328,18 +1349,22 @@ function renderAll() {
   $('availCount').textContent = avail.length;
   $('myActiveCount').textContent = mine.length;
 
-  $('availableList').innerHTML = avail.length ? avail.map(j => `
-    <div class="${jobClass(j)}">
-      <div>
-        <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)}</div>
+  // Koti: news and decisions, newest first; items from the last 7 days are marked new.
+  const news = (state.news || []).slice().sort((x, y) => y.date.localeCompare(x.date));
+  $('newsList').innerHTML = news.length ? news.map(n => {
+    const t = n[lang] || n.fi;
+    const fresh = (Date.now() - new Date(n.date + 'T00:00:00')) / 864e5 < 7;
+    return `
+    <div class="news-item">
+      <div class="news-head">
+        <span class="pill ${n.type === 'decision' ? 'orange' : 'green'}">${n.type === 'decision' ? (lang === 'fi' ? 'Päätös' : 'Decision') : (lang === 'fi' ? 'Uutinen' : 'News')}</span>
+        ${fresh ? `<span class="pill">${lang === 'fi' ? 'Uusi' : 'New'}</span>` : ''}
+        <span class="news-date">${ZemoStore.fmtDate(n.date)}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
-        <button class="btn" onclick="acceptJob('${j.id}')">${lang === 'fi' ? 'Hyväksy tehtävä' : 'Accept Job'}</button>
-      </div>
-    </div>
-  `).join('') : `<p class="sub">${lang === 'fi' ? 'Ei avoimia tehtäviä juuri nyt.' : 'No open jobs right now.'}</p>`;
+      <div class="news-title">${t.title}</div>
+      <div class="news-text">${t.text}</div>
+    </div>`;
+  }).join('') : `<p class="sub">${lang === 'fi' ? 'Ei uusia tiedotteita.' : 'No news right now.'}</p>`;
 
   renderSearch();
 
@@ -1415,9 +1440,9 @@ setInterval(() => {
   if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
 }, 60000);
 
-// Koti: tapping "Avoimet siirrot" scrolls to the open jobs list.
+// Koti: tapping "Avoimet siirrot" opens the open jobs (Hae tab).
 window.goToAvailable = function() {
-  $('availableCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  switchTab('search');
 };
 
 window.openInspection = function(id) {
