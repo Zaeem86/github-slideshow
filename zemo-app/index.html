@@ -1244,6 +1244,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
         <div class="field full"><button class="btn" type="submit" data-fi="Tallenna profiili" data-en="Save Profile">Tallenna profiili</button></div>
       </form>
       <button class="btn outline block" type="button" onclick="switchTab('earnings')" data-fi="Ansiot →" data-en="Earnings →">Ansiot →</button>
+      <button class="btn outline block" type="button" id="logoutBtn" style="color:var(--red);border-color:var(--red)" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
     </div>
   </section>
 
@@ -1478,6 +1479,8 @@ $('loginForm').addEventListener('submit', e => {
   showToast(lang === 'fi' ? 'Tervetuloa kuljettajaportaaliin!' : 'Welcome to Driver Portal!');
 });
 
+// Next sign-in starts on Koti.
+$('logoutBtn')?.addEventListener('click', () => switchTab('available'));
 $('logoutBtn')?.addEventListener('click', () => {
   $('appView').classList.add('hidden');
   $('logoutBtn')?.classList.add('hidden');
