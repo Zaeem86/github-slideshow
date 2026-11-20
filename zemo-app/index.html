@@ -1276,7 +1276,7 @@ function showToast(msg) {
 }
 
 // Jobs are listed by pickup date and time (soonest first); a job starting within SOON_HOURS (or overdue) gets a red frame.
-const SOON_HOURS = 72;
+const SOON_HOURS = 24;
 const startOf = j => new Date(j.date + 'T' + (j.time || '00:00') + ':00');
 const isSoon = j => !!j.date && (startOf(j) - Date.now()) / 36e5 <= SOON_HOURS;
 const byTime = (x, y) => ((x.date || '9999') + (x.time || '00:00')).localeCompare((y.date || '9999') + (y.time || '00:00')) || String(x.id).localeCompare(String(y.id));
