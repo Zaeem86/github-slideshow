@@ -1,0 +1,2486 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" id="vp" content="width=device-width,initial-scale=1">
+<title>ZEMO</title>
+<!--
+  Zemo Siirto – all pages in one file.
+  Each page is stored below and shown in its own frame, exactly as if opened as a separate file.
+  #index (default) = main page · #start = driver swipe + login (the original index.html) · #customer · #driver · #admin
+  Only additions: shared.js (rebuilt, it was not included) and link handling between the pages.
+-->
+<style>
+html,body{margin:0;height:100%;background:#0b1015;overflow:hidden}
+iframe.page{position:fixed;inset:0;width:100%;height:100%;border:0;display:none;background:#0b1015}
+iframe.page.active{display:block}
+</style>
+</head>
+<body>
+<script type="text/plain" id="shared-js">
+/* shared.js – rebuilt (the original file was not included).
+   Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
+(function () {
+  var KEY = 'zemoSiirtoState';
+  var SEED_VERSION = 4; // v2: more open jobs across Finland's regions · v3: pickup times · v4: driver news
+  function defaults() {
+    var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
+    function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
+    function job(id, from, to, region, car, km, date, time, customer) {
+      return { id: id, from: from, to: to, region: region, car: car, km: km, price: price(km), driverPay: Math.round(price(km) * 0.75), status: 'new', date: date, time: time, customer: customer, driver: '', inspected: false };
+    }
+    return {
+      seedVersion: SEED_VERSION,
+      pricing: pricing,
+      orders: [
+        job('ZS-1055', 'Lahti', 'Mikkeli', 'Päijät-Häme', 'BMW 320d (LHT-861)', 120, '2026-12-05', '10:30', 'Autoliike Laakkonen Oy'),
+        job('ZS-1054', 'Kajaani', 'Kuopio', 'Kainuu', 'Hyundai Tucson (KAJ-433)', 170, '2026-12-04', '08:00', 'Matti Meikäläinen'),
+        job('ZS-1053', 'Turku', 'Salo', 'Varsinais-Suomi', 'Mazda CX-5 (TKU-275)', 55, '2026-12-03', '13:15', 'Aino Korhonen'),
+        job('ZS-1052', 'Vantaa', 'Porvoo', 'Uusimaa', 'Tesla Model Y (VAN-640)', 40, '2026-12-02', '09:45', 'Autoliike Laakkonen Oy'),
+        job('ZS-1051', 'Pori', 'Tampere', 'Satakunta', 'Nissan Leaf (POR-902)', 115, '2026-12-01', '07:30', 'Matti Meikäläinen'),
+        job('ZS-1050', 'Kotka', 'Lappeenranta', 'Kymenlaakso', 'Skoda Superb (KTK-118)', 105, '2026-11-30', '11:00', 'Aino Korhonen'),
+        job('ZS-1049', 'Jyväskylä', 'Helsinki', 'Keski-Suomi', 'Audi A4 (JKL-746)', 270, '2026-11-29', '06:45', 'Autoliike Laakkonen Oy'),
+        job('ZS-1048', 'Vaasa', 'Seinäjoki', 'Pohjanmaa', 'Ford Focus (VAA-330)', 80, '2026-11-28', '14:30', 'Matti Meikäläinen'),
+        job('ZS-1047', 'Kuopio', 'Joensuu', 'Pohjois-Savo', 'Kia Ceed (KUO-551)', 135, '2026-11-27', '12:00', 'Aino Korhonen'),
+        job('ZS-1046', 'Rovaniemi', 'Kemi', 'Lappi', 'Toyota RAV4 (ROI-207)', 115, '2026-11-26', '09:00', 'Autoliike Laakkonen Oy'),
+        job('ZS-1045', 'Tampere', 'Oulu', 'Pirkanmaa', 'Volvo V90 (TRE-889)', 490, '2026-11-26', '07:00', 'Matti Meikäläinen'),
+        job('ZS-1044', 'Espoo', 'Turku', 'Uusimaa', 'VW Passat (EPS-412)', 165, '2026-11-25', '15:30', 'Aino Korhonen'),
+        { id: 'ZS-1043', from: 'Lahti', to: 'Jyväskylä', region: 'Päijät-Häme', car: 'Skoda Octavia (XYZ-987)', km: 170, price: price(170), driverPay: 165, status: 'new', date: '2026-11-24', time: '10:00', customer: 'Matti Meikäläinen', driver: '', inspected: false },
+        { id: 'ZS-1042', from: 'Helsinki', to: 'Tampere', region: 'Uusimaa', car: 'Toyota Corolla (ABC-123)', km: 180, price: price(180), driverPay: 175, status: 'new', date: '2026-11-23', time: '08:30', customer: 'Aino Korhonen', driver: '', inspected: false },
+        { id: 'ZS-1041', from: 'Turku', to: 'Pori', region: 'Varsinais-Suomi', car: 'VW Golf (GOLF-1)', km: 140, price: price(140), driverPay: Math.round(price(140) * 0.75), status: 'transit', date: '2026-11-20', time: '09:15', customer: 'Autoliike Laakkonen Oy', driver: 'Mikko Virtanen', inspected: false }
+      ],
+      drivers: [
+        { name: 'Mikko Virtanen', contact: '+358 40 123 4567', licence: 'B', trips: 9, status: 'active' },
+        { name: 'Laura Nieminen', contact: 'laura.nieminen@esimerkki.fi', licence: 'B', trips: 0, status: 'pending' }
+      ],
+      payouts: [],
+      inspections: [],
+      // News and decisions shown to drivers on Koti (newest first). type: 'decision' | 'news'
+      news: [
+        { id: 'N-4', date: '2026-11-19', type: 'decision',
+          fi: { title: 'Talvirenkaat tarkistettava ennen noutoa', text: 'Joulu–helmikuussa autossa on oltava talvirenkaat. Jos niitä ei ole, älä lähde ajoon vaan ilmoita tuelle.' },
+          en: { title: 'Check winter tyres before pickup', text: 'From December to February the car must have winter tyres. If it does not, do not drive – contact support.' } },
+        { id: 'N-3', date: '2026-11-17', type: 'decision',
+          fi: { title: 'Vähintään 4 kuvaa jokaisessa tarkastuksessa', text: 'Ota kuva autosta joka puolelta sekä noudossa että luovutuksessa.' },
+          en: { title: 'At least 4 photos in every inspection', text: 'Photograph the car from every side at both pickup and delivery.' } },
+        { id: 'N-2', date: '2026-11-14', type: 'news',
+          fi: { title: 'Uusia tehtäviä Lappiin ja Kainuuseen', text: 'Siirtoja on nyt tarjolla myös Rovaniemen ja Kajaanin alueilla. Katso Hae-välilehti.' },
+          en: { title: 'New jobs in Lapland and Kainuu', text: 'Transfers are now available around Rovaniemi and Kajaani too. See the Search tab.' } },
+        { id: 'N-1', date: '2026-11-10', type: 'news',
+          fi: { title: 'Tervetuloa ZEMO-kuljettajaksi', text: 'Tältä kortilta löydät jatkossa uutiset ja uudet päätökset.' },
+          en: { title: 'Welcome to ZEMO', text: 'This card shows the latest news and new decisions.' } }
+      ]
+    };
+  }
+  // Saved data from an older version: add the new demo jobs and regions, keep everything else.
+  function upgrade(s) {
+    var byId = {};
+    s.orders.forEach(function (o) { byId[o.id] = o; });
+    defaults().orders.forEach(function (o) {
+      var cur = byId[o.id];
+      if (cur && cur.from === o.from && cur.to === o.to) {   // same demo job: just add its region
+        if (!cur.region) cur.region = o.region;
+        if (!cur.time) cur.time = o.time;
+        return;
+      }
+      if (cur) {                                             // number already used by another order
+        var n = 1056;
+        while (byId['ZS-' + n]) n++;
+        o.id = 'ZS-' + n;
+      }
+      s.orders.push(o);
+      byId[o.id] = o;
+    });
+    if (!s.news) s.news = defaults().news;
+    s.seedVersion = SEED_VERSION;
+  }
+  function get() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.pricing && s.orders) {
+        if (s.seedVersion !== SEED_VERSION) { upgrade(s); save(s); }
+        return s;
+      }
+    } catch (e) {}
+    return defaults();
+  }
+  function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function reset() { save(defaults()); }
+  function fmtEur(n) {
+    return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  }
+  // Pickup moment of a job (a job without a time counts until the end of its day).
+  function startTime(o) { return new Date(o.date + 'T' + (o.time || '23:59') + ':00'); }
+  // An open job whose pickup time has passed without a driver: removed from the driver's lists, handled by admin.
+  function isExpired(o) { return o.status === 'new' && !!o.date && startTime(o).getTime() < Date.now(); }
+  // "2026-11-23" → "23.11.2026"
+  function fmtDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? m[3] + '.' + m[2] + '.' + m[1] : (iso || '');
+  }
+  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, fmtDate: fmtDate, startTime: startTime, isExpired: isExpired };
+})();
+</script>
+<script type="text/plain" id="links-js">
+(function () {
+  /* Single-file navigation: links to index.html / customer.html / driver.html / admin.html switch pages. */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var m = a.getAttribute('href').match(/^(index|start|customer|driver|admin)\.html(?:\?.*)?$/);
+    if (!m) return;
+    e.preventDefault();
+    parent.postMessage({ zemoGo: m[1] }, '*');
+  });
+})();
+</script>
+
+<script type="text/html" id="page-index">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZEMO — Auton siirto Suomessa</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#ffffff;--soft:#f5f6f8;--ink:#121a22;--muted:#5b6b79;--line:#e3e7ec;
+  --orange:#f28a45;--orange-dark:#d9692a;--on-orange:#17110d;
+  --navy:#0f171f;--navy-ink:#f4f7fa;--navy-muted:#a9b7c3;--field:#ffffff
+}
+:root[data-theme="dark"]{
+  --bg:#0b1015;--soft:#131b23;--ink:#f4f7fa;--muted:#9baab7;--line:#293642;
+  --navy:#070b0f;--field:#131b23
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,-apple-system,Arial,sans-serif;overflow-x:hidden}
+button,input{font:inherit}
+button{cursor:pointer}
+a{color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.hidden{display:none!important}
+
+/* Header */
+.top{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;font-size:22px;letter-spacing:.08em}
+.brand-logo{width:56px;aspect-ratio:520/350;border-radius:8px;background:url(data:image/webp;base64,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) center/cover no-repeat}
+.top-actions{display:flex;align-items:center;gap:6px}
+.icon-btn{background:none;border:0;color:var(--ink);width:40px;height:40px;display:grid;place-items:center;border-radius:10px}
+.icon-btn:hover{background:var(--soft)}
+.icon-btn svg{width:22px;height:22px}
+.lang-btn{width:auto;padding:0 8px;font-weight:800;font-size:13px;gap:4px;display:flex;align-items:center}
+
+/* Menu */
+.menu{position:fixed;inset:64px 0 0 0;z-index:39;background:var(--bg);padding:40px 28px;display:flex;flex-direction:column;gap:28px}
+.menu a{font-size:34px;font-weight:600;text-decoration:none;color:var(--ink)}
+.menu a.current{color:var(--orange)}
+.menu a.small{font-size:18px;color:var(--muted);margin-top:auto}
+
+/* Hero */
+.hero{padding-top:34px;padding-bottom:10px;text-align:center}
+.hero h1{font-size:clamp(28px,6.5vw,46px);line-height:1.18;margin:0 0 14px;font-weight:800}
+.hero h1 .hl{color:var(--orange);text-decoration:underline;text-underline-offset:5px}
+.hero p.lead{color:var(--muted);margin:0 auto 26px;max-width:620px;font-size:15px}
+.calc{text-align:left;max-width:560px;margin:0 auto}
+.calc label{display:block;font-weight:800;font-size:14px;margin:14px 0 8px}
+.calc input{width:100%;padding:15px 16px;border:1px solid var(--line);border-radius:12px;background:var(--field);color:var(--ink);font-size:15px}
+.calc input:focus{outline:2px solid var(--orange);border-color:transparent}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--orange);color:var(--on-orange);border:0;border-radius:12px;padding:14px 22px;font-weight:800;text-decoration:none}
+.btn:hover{background:var(--orange-dark)}
+.btn.block{width:100%;margin-top:18px}
+.calc-msg{color:#d64545;font-size:13px;margin-top:8px;min-height:1px}
+.result{margin-top:16px;border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--soft)}
+.result-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:14px;color:var(--muted)}
+.result-row b{color:var(--ink)}
+.result-total{font-size:24px;font-weight:900;color:var(--ink)}
+.result small{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+
+.steps{max-width:560px;margin:28px auto 0;text-align:left;display:grid;gap:16px}
+.step{display:flex;gap:14px;align-items:flex-start}
+.num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--orange);color:var(--on-orange);font-weight:900;font-size:13px;display:grid;place-items:center}
+.step b{display:block}
+.step span{color:var(--muted);font-size:14px}
+
+#map{height:320px;max-width:560px;margin:28px auto 0;border-radius:14px;border:1px solid var(--line);background:var(--soft);z-index:1}
+.trust{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:14px;margin:18px 0 40px}
+.trust svg{width:18px;height:18px;color:var(--orange)}
+
+/* Why ZEMO */
+.why{padding:30px 0 60px}
+.why h2{font-size:clamp(26px,5.5vw,36px);margin:0 0 26px;line-height:1.2}
+.why h2 span{color:var(--orange)}
+.why ol{list-style:none;margin:0;padding:0;display:grid;gap:22px}
+.why li{display:flex;gap:16px;color:var(--muted);font-size:16px}
+
+/* Dark band */
+.band{background:var(--navy);color:var(--navy-ink);padding:60px 0;border-radius:40px 40px 0 0}
+.band section{padding:20px 0 34px}
+.kicker{color:var(--orange);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.band h2{font-size:clamp(28px,6vw,38px);line-height:1.2;margin:10px 0 16px}
+.band p{color:var(--navy-muted);max-width:620px;margin:0 0 26px}
+
+/* Footer */
+footer{padding:40px 0 30px;border-top:1px solid var(--line)}
+.foot-brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:28px;letter-spacing:.08em}
+.foot-brand .brand-logo{width:72px}
+footer .tag{color:var(--muted);font-size:14px;margin:10px 0 18px}
+.foot-links{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:14px;margin-bottom:20px}
+.foot-links a{text-decoration:none}
+.foot-links a:hover{color:var(--orange)}
+.contact{display:flex;align-items:center;gap:10px;font-size:14px;margin:8px 0}
+.contact svg{width:18px;height:18px;color:var(--orange)}
+.copy{border-top:1px solid var(--line);margin-top:22px;padding-top:16px;color:var(--muted);font-size:12px}
+
+@media(min-width:900px){
+  .why ol{grid-template-columns:1fr 1fr}
+  .band .wrap{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#etusivu" aria-label="ZEMO"><span class="brand-logo"></span>ZEMO</a>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" aria-label="Vaihda teema">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="icon-btn lang-btn" id="langBtn" aria-label="Kieli / Language">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        <span id="langLabel">FI</span>
+      </button>
+      <button class="icon-btn" id="menuBtn" aria-label="Valikko" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<nav class="menu hidden" id="menu">
+  <a href="#etusivu" data-fi="Etusivu" data-en="Home">Etusivu</a>
+  <a href="#yrityksille" data-fi="Yrityksille" data-en="For businesses">Yrityksille</a>
+  <a href="#kuljettajille" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</a>
+  <a href="#meista" data-fi="Meistä" data-en="About us">Meistä</a>
+  <a class="small" href="start.html" data-fi="Kuljettajan kirjautuminen →" data-en="Driver login →">Kuljettajan kirjautuminen →</a>
+</nav>
+
+<main id="etusivu">
+  <section class="hero wrap">
+    <h1><span data-fi="Nopea ja luotettava" data-en="Fast and reliable">Nopea ja luotettava</span> <span class="hl" data-fi="auton siirto" data-en="car transfer">auton siirto</span> <span data-fi="koko Suomessa" data-en="all over Finland">koko Suomessa</span></h1>
+    <p class="lead" data-fi="ZEMO siirtää autosi perille: tarkastettu kuljettaja noutaa auton sovittuna aikana ja ajaa sen määränpäähän. Palvelemme yksityisasiakkaita, autoliikkeitä sekä leasing- ja vuokrayhtiöitä." data-en="ZEMO gets your car where it needs to be: a vetted driver picks it up at the agreed time and drives it to its destination. We serve private customers, car dealers and leasing and rental companies.">ZEMO siirtää autosi perille: tarkastettu kuljettaja noutaa auton sovittuna aikana ja ajaa sen määränpäähän. Palvelemme yksityisasiakkaita, autoliikkeitä sekä leasing- ja vuokrayhtiöitä.</p>
+
+    <form class="calc" id="calcForm" novalidate>
+      <label for="from" data-fi="Nouto-osoite" data-en="Pickup address">Nouto-osoite</label>
+      <input id="from" list="cities" autocomplete="off" data-fi-ph="esim. Helsinki" data-en-ph="e.g. Helsinki" placeholder="esim. Helsinki">
+      <label for="to" data-fi="Toimitusosoite" data-en="Delivery address">Toimitusosoite</label>
+      <input id="to" list="cities" autocomplete="off" data-fi-ph="esim. Tampere" data-en-ph="e.g. Tampere" placeholder="esim. Tampere">
+      <datalist id="cities"></datalist>
+      <div class="calc-msg" id="calcMsg"></div>
+      <button class="btn block" type="submit" data-fi="Laske hinta" data-en="Calculate price">Laske hinta</button>
+      <div class="result hidden" id="result">
+        <div class="result-row"><span id="resRoute"></span><b id="resKm"></b></div>
+        <div class="result-row"><span data-fi="Arviohinta" data-en="Estimated price">Arviohinta</span><span class="result-total" id="resPrice"></span></div>
+        <small data-fi="Arvio perustuu kaupunkien väliseen ajomatkaan. Lopullinen hinta vahvistetaan tilauksessa." data-en="Estimate based on the driving distance between the cities. The final price is confirmed in the order.">Arvio perustuu kaupunkien väliseen ajomatkaan. Lopullinen hinta vahvistetaan tilauksessa.</small>
+        <a class="btn block" href="customer.html" data-fi="Tilaa siirto →" data-en="Order a transfer →">Tilaa siirto →</a>
+      </div>
+    </form>
+
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><b data-fi="Syötä osoitteet" data-en="Enter the addresses">Syötä osoitteet</b><span data-fi="Kerro, mistä auto noudetaan ja minne se viedään." data-en="Tell us where the car is picked up and where it goes.">Kerro, mistä auto noudetaan ja minne se viedään.</span></div></div>
+      <div class="step"><div class="num">2</div><div><b data-fi="Saat hinta-arvion heti" data-en="Get an instant estimate">Saat hinta-arvion heti</b><span data-fi="Näet hinnan ennen tilausta, ilman yllätyksiä." data-en="See the price before you order, with no surprises.">Näet hinnan ennen tilausta, ilman yllätyksiä.</span></div></div>
+      <div class="step"><div class="num">3</div><div><b data-fi="Tilaa – me hoidamme loput" data-en="Order – we handle the rest">Tilaa – me hoidamme loput</b><span data-fi="Seuraa siirtoa reaaliajassa noudosta luovutukseen." data-en="Follow the transfer live from pickup to delivery.">Seuraa siirtoa reaaliajassa noudosta luovutukseen.</span></div></div>
+    </div>
+
+    <div id="map" role="img" aria-label="Kartta"></div>
+    <div class="trust">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+      <span data-fi="Digitaalinen tarkastus noudossa ja luovutuksessa" data-en="Digital inspection at pickup and delivery">Digitaalinen tarkastus noudossa ja luovutuksessa</span>
+    </div>
+  </section>
+
+  <section class="why wrap" id="meista">
+    <h2>ZEMO — <span data-fi="liikkeellä puolestasi" data-en="on the move for you">liikkeellä puolestasi</span></h2>
+    <ol>
+      <li><div class="num">1</div><div data-fi="Asiakkaitamme ovat yksityishenkilöt, autoliikkeet, leasing-yhtiöt ja autovuokraamot, jotka tarvitsevat auton siirron nopeasti." data-en="Our customers are private people, car dealers, leasing companies and rental firms who need a car moved quickly.">Asiakkaitamme ovat yksityishenkilöt, autoliikkeet, leasing-yhtiöt ja autovuokraamot, jotka tarvitsevat auton siirron nopeasti.</div></li>
+      <li><div class="num">2</div><div data-fi="Ajamme siirtoja kaikkialla Suomessa – Helsingistä Rovaniemelle." data-en="We drive transfers all over Finland – from Helsinki to Rovaniemi.">Ajamme siirtoja kaikkialla Suomessa – Helsingistä Rovaniemelle.</div></li>
+      <li><div class="num">3</div><div data-fi="Jokainen auto tarkastetaan ja kuvataan noudossa ja luovutuksessa." data-en="Every car is inspected and photographed at pickup and delivery.">Jokainen auto tarkastetaan ja kuvataan noudossa ja luovutuksessa.</div></li>
+      <li><div class="num">4</div><div data-fi="Asiakaspalvelumme palvelee suomeksi ja englanniksi." data-en="Our customer service speaks Finnish and English.">Asiakaspalvelumme palvelee suomeksi ja englanniksi.</div></li>
+    </ol>
+  </section>
+
+  <div class="band">
+    <div class="wrap">
+      <section id="yrityksille">
+        <div class="kicker" data-fi="Yrityksille" data-en="For businesses">Yrityksille</div>
+        <h2 data-fi="Anna autojen siirrot ZEMOn hoidettavaksi" data-en="Leave your car transfers to ZEMO">Anna autojen siirrot ZEMOn hoidettavaksi</h2>
+        <p data-fi="Säästä aikaa ja keskity omaan liiketoimintaasi. Tilaat siirrot yhdestä paikasta, näet niiden tilan reaaliajassa ja saat laskun selkeästi." data-en="Save time and focus on your own business. Order transfers in one place, follow them live and get a clear invoice.">Säästä aikaa ja keskity omaan liiketoimintaasi. Tilaat siirrot yhdestä paikasta, näet niiden tilan reaaliajassa ja saat laskun selkeästi.</p>
+        <a class="btn" href="customer.html" data-fi="Tule asiakkaaksi →" data-en="Become a customer →">Tule asiakkaaksi →</a>
+      </section>
+      <section id="kuljettajille">
+        <div class="kicker" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</div>
+        <h2 data-fi="Aja kanssamme" data-en="Drive with us">Aja kanssamme</h2>
+        <p data-fi="Valitse itse sinulle sopivat siirrot, aja omaan tahtiisi ja seuraa ansioitasi sovelluksessa." data-en="Choose the transfers that suit you, drive at your own pace and follow your earnings in the app.">Valitse itse sinulle sopivat siirrot, aja omaan tahtiisi ja seuraa ansioitasi sovelluksessa.</p>
+        <a class="btn" href="start.html" data-fi="Kuljettajan kirjautuminen →" data-en="Driver login →">Kuljettajan kirjautuminen →</a>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-brand"><span class="brand-logo"></span>ZEMO</div>
+    <div class="tag" data-fi="Luotettava ja nopea auton siirto Suomessa." data-en="Reliable and fast car transfers in Finland.">Luotettava ja nopea auton siirto Suomessa.</div>
+    <div class="foot-links">
+      <a href="#yrityksille" data-fi="Yrityksille" data-en="For businesses">Yrityksille</a>
+      <a href="#kuljettajille" data-fi="Kuljettajille" data-en="For drivers">Kuljettajille</a>
+      <a href="#meista" data-fi="Meistä" data-en="About us">Meistä</a>
+    </div>
+    <a class="contact" href="mailto:tuki@zemosiirto.fi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>tuki@zemosiirto.fi
+    </a>
+    <div class="copy">© 2026 ZEMO. <span data-fi="Kaikki oikeudet pidätetään." data-en="All rights reserved.">Kaikki oikeudet pidätetään.</span></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>
+<script src="shared.js"><\/script>
+<script>
+const $ = id => document.getElementById(id);
+let lang = 'fi';
+
+// Finnish cities for the instant price (lat, lon).
+const CITIES = {
+  'Helsinki': [60.1699, 24.9384], 'Espoo': [60.2055, 24.6559], 'Vantaa': [60.2934, 25.0378], 'Porvoo': [60.3932, 25.6650],
+  'Turku': [60.4518, 22.2666], 'Salo': [60.3831, 23.1286], 'Tampere': [61.4978, 23.7610], 'Hämeenlinna': [60.9959, 24.4643],
+  'Lahti': [60.9827, 25.6612], 'Kotka': [60.4664, 26.9458], 'Lappeenranta': [61.0587, 28.1887], 'Mikkeli': [61.6886, 27.2723],
+  'Pori': [61.4851, 21.7974], 'Rauma': [61.1272, 21.5112], 'Jyväskylä': [62.2426, 25.7473], 'Kuopio': [62.8924, 27.6770],
+  'Joensuu': [62.6010, 29.7636], 'Savonlinna': [61.8687, 28.8789], 'Seinäjoki': [62.7903, 22.8403], 'Vaasa': [63.0951, 21.6165],
+  'Kokkola': [63.8385, 23.1307], 'Oulu': [65.0121, 25.4651], 'Kajaani': [64.2273, 27.7285], 'Kemi': [65.7364, 24.5637],
+  'Tornio': [65.8481, 24.1466], 'Rovaniemi': [66.5039, 25.7294]
+};
+$('cities').innerHTML = Object.keys(CITIES).map(c => `<option value="${c}">`).join('');
+const findCity = v => Object.keys(CITIES).find(c => c.toLowerCase() === (v || '').trim().split(',')[0].trim().toLowerCase());
+
+// Road distance estimate: straight line × 1.12 (close to real Finnish road distances).
+function roadKm(a, b) {
+  const R = 6371, rad = d => d * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)) * 1.12);
+}
+
+// Map of Finland (only if the map library loaded).
+let map = null, routeLayer = null;
+if (window.L) {
+  map = L.map('map', { scrollWheelZoom: false }).setView([64.5, 26], 4);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+} else {
+  $('map').classList.add('hidden');
+}
+
+$('calcForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const a = findCity($('from').value), b = findCity($('to').value);
+  $('calcMsg').textContent = '';
+  if (!a || !b || a === b) {
+    $('result').classList.add('hidden');
+    $('calcMsg').textContent = lang === 'fi' ? 'Valitse kaksi eri kaupunkia listasta.' : 'Choose two different cities from the list.';
+    return;
+  }
+  const km = roadKm(CITIES[a], CITIES[b]);
+  const p = ZemoStore.get().pricing;
+  const price = p.base + p.rate * km + p.fee;
+  $('resRoute').textContent = a + ' → ' + b;
+  $('resKm').textContent = '≈ ' + km + ' km';
+  $('resPrice').textContent = ZemoStore.fmtEur(price);
+  $('result').classList.remove('hidden');
+  if (map) {
+    if (routeLayer) routeLayer.remove();
+    routeLayer = L.featureGroup([
+      L.circleMarker(CITIES[a], { radius: 7, color: '#f28a45', fillOpacity: 1 }).bindTooltip(a),
+      L.circleMarker(CITIES[b], { radius: 7, color: '#f28a45', fillOpacity: 1 }).bindTooltip(b),
+      L.polyline([CITIES[a], CITIES[b]], { color: '#f28a45', weight: 4, dashArray: '8 8' })
+    ]).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+  }
+});
+
+// Menu
+function closeMenu() { $('menu').classList.add('hidden'); $('menuBtn').setAttribute('aria-expanded', 'false'); }
+$('menuBtn').addEventListener('click', () => {
+  const open = $('menu').classList.toggle('hidden') === false;
+  $('menuBtn').setAttribute('aria-expanded', String(open));
+});
+document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  closeMenu();
+  const id = a.getAttribute('href').slice(1);
+  document.querySelectorAll('#menu a').forEach(m => m.classList.toggle('current', m === a));
+  if (id === 'etusivu') window.scrollTo({ top: 0, behavior: 'smooth' });
+  else { const t = $(id); window.scrollTo({ top: t.getBoundingClientRect().top + window.scrollY - 74, behavior: 'smooth' }); }
+}));
+document.querySelector('#menu a').classList.add('current');
+
+// Theme (light / dark), remembered on this device.
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('zemoTheme', t); } catch (e) {}
+}
+try { if (localStorage.getItem('zemoTheme') === 'dark') setTheme('dark'); } catch (e) {}
+$('themeBtn').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+// Language FI / EN
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langLabel').textContent = lang.toUpperCase();
+  document.querySelectorAll('[data-fi]').forEach(el => { el.textContent = el.dataset[lang]; });
+  document.querySelectorAll('[data-fi-ph]').forEach(el => { el.placeholder = el.dataset[lang + 'Ph']; });
+  if ($('calcMsg').textContent) $('calcForm').requestSubmit();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-start">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Zemo Siirto — Kuljettaja</title>
+<style>
+:root{
+  --bg:#080c10;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--orange-glow:rgba(242,138,69,.45);
+  --green:#6bd1a0;--teal:#18a999
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Arial,sans-serif;overflow-x:hidden}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+/* ================= SCREEN 1: SWIPE SPLASH ================= */
+.splash-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:space-between;
+  padding:48px 24px 54px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(242,138,69,.14) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 15%, #16202a 0%, #070a0e 70%);
+  position:relative;
+  user-select:none;
+}
+
+.logo-stage{
+  margin-top:auto;
+  margin-bottom:auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+
+/* Custom Glowing Z + Road + Car SVG Emblem */
+.z-emblem{
+  width:min(270px, 72vw);
+  height:auto;
+  filter:drop-shadow(0 0 22px rgba(242,138,69,.35));
+}
+/* New Zemo logo (image). Edges fade into the background so no rectangle shows. */
+.z-logo{
+  aspect-ratio:520/350;
+  background:url(data:image/webp;base64,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) center/contain no-repeat;
+  -webkit-mask-image:radial-gradient(ellipse 62% 62% at 50% 50%, #000 70%, transparent 100%);
+  mask-image:radial-gradient(ellipse 62% 62% at 50% 50%, #000 70%, transparent 100%);
+}
+
+.zemo-wordmark{
+  font-size:clamp(44px, 11vw, 58px);
+  font-weight:900;
+  letter-spacing:-.03em;
+  color:#ffffff;
+  margin:10px 0 0;
+  line-height:1;
+}
+
+/* Swipe Track */
+.swipe-wrap{
+  width:min(340px, 90vw);
+  margin-top:24px;
+}
+
+.swipe-track{
+  position:relative;
+  height:68px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(242,138,69,.16), rgba(20,27,34,.92));
+  border:1.5px solid rgba(242,138,69,.65);
+  box-shadow:0 0 24px rgba(242,138,69,.15), inset 0 0 14px rgba(0,0,0,.6);
+  padding:5px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+
+.swipe-fill{
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:64px;
+  background:linear-gradient(90deg, rgba(242,138,69,.35), rgba(242,138,69,.1));
+  border-radius:999px;
+  pointer-events:none;
+}
+
+.swipe-knob{
+  position:relative;
+  z-index:2;
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #ff9d57, #e66e1e);
+  box-shadow:0 0 20px var(--orange-glow);
+  display:grid;
+  place-items:center;
+  cursor:grab;
+  touch-action:none;
+  will-change:transform;
+}
+.swipe-knob:active{cursor:grabbing}
+
+/* Auto-nudge animation to center and back until touched */
+@keyframes autoNudge {
+  0%, 15%   { transform: translateX(0px); }
+  50%       { transform: translateX(125px); }
+  85%, 100% { transform: translateX(0px); }
+}
+.swipe-knob.auto-anim{
+  animation: autoNudge 2.6s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+
+/* ================= SCREEN 2: DRIVER LOGIN ================= */
+.login-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px 22px;
+  background:radial-gradient(circle at 50% 18%, rgba(242,138,69,.1) 0%, #080c10 60%);
+  animation:fadeIn .35s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.login-logo{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin-bottom:34px;
+}
+.login-logo .z-emblem{width:155px}
+.login-logo .zemo-wordmark{font-size:36px;margin-top:6px}
+
+.login-box{
+  width:min(380px, 100%);
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.clean-input{
+  width:100%;
+  height:56px;
+  border-radius:14px;
+  border:1px solid #2b3744;
+  background:#151e27;
+  color:#f4f7fa;
+  font-size:16px;
+  text-align:center;
+  padding:0 18px;
+  outline:none;
+  transition:.18s;
+}
+.clean-input::placeholder{color:#9baab7;opacity:1}
+.clean-input:focus{
+  border-color:var(--orange);
+  background:#19242f;
+  box-shadow:0 0 0 3px rgba(242,138,69,.15);
+}
+
+.forgot-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:-4px;
+}
+.forgot-link{
+  background:none;
+  border:0;
+  color:#25b8a6;
+  font-size:14px;
+  font-weight:700;
+  padding:4px 2px;
+}
+.forgot-link:hover{text-decoration:underline}
+
+.kirjaudu-btn{
+  width:100%;
+  height:58px;
+  border:0;
+  border-radius:16px;
+  background:#343f4b;
+  color:#ffffff;
+  font-size:18px;
+  font-weight:800;
+  margin-top:6px;
+  transition:.2s;
+}
+.kirjaudu-btn.ready, .kirjaudu-btn:hover{
+  background:var(--orange);
+  color:#17100b;
+}
+
+/* ================= SCREEN 3: DRIVER WORKSPACE ================= */
+.top{height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#0d1319;position:sticky;top:0;z-index:20}
+.brand-mini{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:.12em}
+.mark{width:34px;height:34px;border:2px solid var(--orange);border-radius:9px;display:grid;place-items:center;color:var(--orange);font-size:17px;transform:skew(-7deg)}
+.mark-logo{height:44px;width:auto;display:block;border-radius:9px}
+.mark-logo-sm{height:38px}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 12px;border-radius:8px;font-size:13px}
+.wrap{width:min(1100px,calc(100% - 32px));margin:auto;padding:22px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:20px;margin-bottom:16px}
+.job{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:15px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:10px 15px;font-size:13px}
+.btn.green{background:var(--green);color:#0b2217}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#1c3a30;color:#a8f0ce}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:12px 18px;border-radius:10px;display:none;z-index:60;font-size:13px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<\!-- ==================== 1. SPLASH / SWIPE SCREEN ==================== -->
+<section id="splashScreen" class="splash-screen">
+  <div></div>
+
+  <div class="logo-stage">
+    <\!-- Glowing Z + Road + Car Emblem -->
+    <div class="z-emblem z-logo" role="img" aria-label="ZEMO"></div>
+
+    <div class="zemo-wordmark">ZEMO</div>
+  </div>
+
+  <\!-- Swipe Left to Right Control (No Text) -->
+  <div class="swipe-wrap">
+    <div class="swipe-track" id="swipeTrack">
+      <div class="swipe-fill" id="swipeFill"></div>
+      <div class="swipe-knob auto-anim" id="swipeKnob" aria-label="Swipe right">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="#140d08" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<\!-- ==================== 2. DRIVER LOGIN SCREEN ==================== -->
+<section id="loginScreen" class="login-screen hidden">
+  <div class="login-logo">
+    <div class="z-emblem z-logo" role="img" aria-label="ZEMO"></div>
+    <div class="zemo-wordmark">ZEMO</div>
+  </div>
+
+  <form id="loginForm" class="login-box">
+    <input type="text" id="usernameInput" class="clean-input" placeholder="Käyttäjätunnus" autocomplete="username" required>
+    <input type="password" id="passwordInput" class="clean-input" placeholder="Salasana" autocomplete="current-password" required>
+
+    <div class="forgot-row">
+      <button type="button" class="forgot-link" id="forgotBtn">Salasana unohtunut</button>
+    </div>
+
+    <button type="submit" class="kirjaudu-btn" id="loginSubmitBtn">Kirjaudu</button>
+  </form>
+</section>
+
+<\!-- ==================== 3. DRIVER WORKSPACE ==================== -->
+<div id="driverPortal" class="hidden">
+  <header class="top">
+    <div class="brand-mini">
+      <img class="mark-logo mark-logo-sm" alt="ZEMO" src="data:image/webp;base64,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">
+      <span>ZEMO <small style="color:var(--orange);font-size:10px">DRIVER</small></span>
+    </div>
+    <button class="ghost" id="logoutBtn">Kirjaudu ulos</button>
+  </header>
+
+  <main class="wrap">
+    <nav class="nav" id="driverNav">
+      <button class="active" data-tab="jobs">Avoimet tehtävät</button>
+      <button data-tab="active">Omat tehtävät</button>
+      <button data-tab="earnings">Ansiot</button>
+    </nav>
+
+    <section id="jobs" class="tab-panel">
+      <div class="card">
+        <h2 style="margin:0 0 14px;font-size:18px">Avoimet siirtotehtävät</h2>
+        <div class="job">
+          <div>
+            <strong>#ZS-1042 · Helsinki → Tampere</strong>
+            <div style="font-size:12px;color:var(--muted)">Toyota Corolla (ABC-123) · 180 km</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <b style="color:var(--green);font-size:17px">175,00 €</b>
+            <button class="btn" onclick="acceptDemoJob(this)">Hyväksy</button>
+          </div>
+        </div>
+        <div class="job">
+          <div>
+            <strong>#ZS-1043 · Lahti → Jyväskylä</strong>
+            <div style="font-size:12px;color:var(--muted)">Skoda Octavia (XYZ-987) · 170 km</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <b style="color:var(--green);font-size:17px">165,00 €</b>
+            <button class="btn" onclick="acceptDemoJob(this)">Hyväksy</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="active" class="tab-panel hidden">
+      <div class="card">
+        <h2 style="margin:0 0 14px;font-size:18px">Omat aktiiviset tehtävät</h2>
+        <div class="job">
+          <div>
+            <strong>#ZS-1041 · Turku → Pori</strong>
+            <div style="font-size:12px;color:var(--muted)">VW Golf (GOLF-1) · 140 km · <span class="pill">Kuljetuksessa</span></div>
+          </div>
+          <a href="https://www.google.com/maps/dir/Turku/Pori" target="_blank" class="btn green" style="text-decoration:none">Avaa reitti ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="earnings" class="tab-panel hidden">
+      <div class="card">
+        <h2 style="margin:0 0 8px;font-size:18px">Kuukauden ansiot</h2>
+        <div style="font-size:32px;font-weight:900;color:var(--green)">1 415,00 €</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">9 suoritettua siirtoa tässä kuussa</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+/* ================= INTERACTIVE SWIPE LOGIC ================= */
+const track = $('swipeTrack');
+const knob = $('swipeKnob');
+const fill = $('swipeFill');
+
+let isDragging = false;
+let startX = 0;
+let currentX = 0;
+
+function getMaxSlide() {
+  return track.clientWidth - knob.clientWidth - 10;
+}
+
+function openLoginScreen() {
+  $('splashScreen').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+  setTimeout(() => $('usernameInput').focus(), 100);
+}
+
+function onStart(clientX) {
+  isDragging = true;
+  knob.classList.remove('auto-anim');
+  knob.style.transition = 'none';
+  fill.style.transition = 'none';
+  startX = clientX - currentX;
+}
+
+function onMove(clientX) {
+  if (!isDragging) return;
+  const max = getMaxSlide();
+  let nextX = clientX - startX;
+  nextX = Math.max(0, Math.min(nextX, max));
+  currentX = nextX;
+  knob.style.transform = `translateX(${currentX}px)`;
+  fill.style.width = `${currentX + knob.clientWidth + 5}px`;
+
+  if (currentX >= max * 0.82) {
+    isDragging = false;
+    knob.style.transition = 'transform .2s ease';
+    knob.style.transform = `translateX(${max}px)`;
+    setTimeout(openLoginScreen, 180);
+  }
+}
+
+function onEnd() {
+  if (!isDragging) return;
+  isDragging = false;
+  currentX = 0;
+  knob.style.transition = 'transform .3s cubic-bezier(.2,.8,.2,1)';
+  fill.style.transition = 'width .3s cubic-bezier(.2,.8,.2,1)';
+  knob.style.transform = 'translateX(0px)';
+  fill.style.width = '64px';
+  setTimeout(() => {
+    if (!isDragging) {
+      knob.style.transition = '';
+      knob.classList.add('auto-anim');
+    }
+  }, 320);
+}
+
+knob.addEventListener('mousedown', e => onStart(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onEnd);
+
+knob.addEventListener('touchstart', e => onStart(e.touches[0].clientX), { passive: true });
+window.addEventListener('touchmove', e => onMove(e.touches[0].clientX), { passive: true });
+window.addEventListener('touchend', onEnd);
+
+/* ================= LOGIN FORM LOGIC ================= */
+function checkInputs() {
+  const ready = $('usernameInput').value.trim().length > 0 && $('passwordInput').value.trim().length > 0;
+  $('loginSubmitBtn').classList.toggle('ready', ready);
+}
+$('usernameInput').addEventListener('input', checkInputs);
+$('passwordInput').addEventListener('input', checkInputs);
+
+$('forgotBtn').addEventListener('click', () => {
+  showToast('Palautuslinkki lähetetty sähköpostiisi.');
+});
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  // Kirjaudu → driver page (driver.html), signed in. The password is not kept in the field.
+  $('passwordInput').value = '';
+  checkInputs();
+  if (window.parent !== window) parent.postMessage({ zemoGo: 'driver', login: true }, '*');
+  else window.location.href = 'driver.html';
+});
+
+$('logoutBtn').addEventListener('click', () => {
+  $('driverPortal').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+});
+
+/* ================= WORKSPACE TABS ================= */
+document.querySelectorAll('#driverNav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#driverNav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== btn.dataset.tab));
+  });
+});
+
+window.acceptDemoJob = function(btn) {
+  btn.textContent = 'Valittu ✓';
+  btn.disabled = true;
+  btn.style.background = '#26333e';
+  btn.style.color = '#9baab7';
+  showToast('Tehtävä lisätty omiin tehtäviisi.');
+};
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-customer">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto — Asiakasportaali</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1180px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.mark-logo{height:44px;width:auto;display:block;border-radius:9px}
+.brand small{display:block;font-size:9px;color:var(--blue);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.user-pill{display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 11px;font-size:12px;font-weight:700;background:#1b2836;color:var(--blue)}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1180px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 16px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:11px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:12px 16px;font-size:14px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.pricebox{background:linear-gradient(145deg,#202d38,#151d25);border:1px solid #394854;border-radius:14px;padding:20px}
+.pricebox .amount{font-size:36px;font-weight:900;letter-spacing:-.04em;color:var(--orange)}
+.line{height:1px;background:var(--line);margin:14px 0}
+.row{display:flex;justify-content:space-between;gap:12px;margin:8px 0;font-size:13px}
+
+.order-item{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.order-title{font-size:16px;font-weight:800}
+.order-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.pill{display:inline-block;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.blue{background:#1b324b;color:#8ebcff}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+.pill.red{background:#3a1d22;color:#ff9e9e}
+
+.timeline{position:relative;padding-left:26px;margin-top:16px}
+.timeline::before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.t-step{position:relative;padding-bottom:20px}
+.t-step:last-child{padding-bottom:0}
+.t-dot{position:absolute;left:-23px;top:3px;width:12px;height:12px;border-radius:50%;background:var(--line);border:2px solid var(--panel)}
+.t-step.done .t-dot{background:var(--green)}
+.t-step.active .t-dot{background:var(--orange);box-shadow:0 0 0 4px rgba(242,138,69,.22)}
+.t-step strong{display:block;font-size:14px}
+.t-step small{color:var(--muted);font-size:12px}
+
+.driver-card{background:#0e151c;border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}
+.avatar{width:44px;height:44px;border-radius:50%;background:#243342;display:grid;place-items:center;font-weight:900;color:var(--orange)}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:540px){.fields{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <img class="mark-logo" alt="ZEMO" src="data:image/webp;base64,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">
+    <span>ZEMO SIIRTO<small>CUSTOMER PORTAL</small></span>
+  </a>
+  <div class="topright">
+    <a class="ghost" href="index.html" data-fi="← Etusivu" data-en="← Home">← Etusivu</a>
+    <span class="user-pill hidden" id="userBadge">Aino Korhonen</span>
+    <button class="lang" id="langBtn">EN</button>
+    <button class="ghost hidden" id="logoutBtn" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Asiakkaan kirjautuminen" data-en="Customer Login">Asiakkaan kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu sisään tilataksesi auton siirron ja seurataksesi kuljetusta." data-en="Sign in to book vehicle relocations and track live deliveries.">Kirjaudu sisään tilataksesi auton siirron ja seurataksesi kuljetusta.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Sähköposti" data-en="Email Address">Sähköposti</label>
+        <input type="email" value="aino.korhonen@esimerkki.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Kirjaudu asiakasportaaliin →" data-en="Enter Customer Portal →">Kirjaudu asiakasportaaliin →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <nav class="nav" id="custNav">
+    <button class="active" data-tab="dashboard" data-fi="Yleisnäkymä" data-en="Dashboard">Yleisnäkymä</button>
+    <button data-tab="create" data-fi="+ Tilaa uusi siirto" data-en="+ Create Order">+ Tilaa uusi siirto</button>
+    <button data-tab="tracking" data-fi="Live-seuranta" data-en="Tracking">Live-seuranta</button>
+  </nav>
+
+  <section id="dashboard" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat"><b id="activeCount">0</b><span data-fi="Aktiiviset siirrot" data-en="Active relocations">Aktiiviset siirrot</span></div>
+      <div class="stat"><b id="totalOrdersCount">0</b><span data-fi="Tilaukset yhteensä" data-en="Total orders">Tilaukset yhteensä</span></div>
+      <div class="stat"><b style="color:var(--green)">100%</b><span data-fi="Vakuutusturva aktiivinen" data-en="Relocation insurance active">Vakuutusturva aktiivinen</span></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <h2 data-fi="Kaikki siirtotilaukset" data-en="Relocation Orders">Kaikki siirtotilaukset</h2>
+          <p class="sub" style="margin:0" data-fi="Klikkaa tilausta avataksesi reaaliaikaisen seurannan." data-en="Select an order to view live tracking and driver details.">Klikkaa tilausta avataksesi reaaliaikaisen seurannan.</p>
+        </div>
+        <button class="btn" onclick="switchTab('create')" data-fi="+ Uusi tilaus" data-en="+ New Order">+ Uusi tilaus</button>
+      </div>
+      <div id="ordersList"></div>
+    </div>
+  </section>
+
+  <section id="create" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Tilaa auton siirto" data-en="Create Relocation Order">Tilaa auton siirto</h2>
+        <p class="sub" data-fi="Täytä nouto- ja toimitustiedot sekä auton perustiedot." data-en="Enter pickup/drop-off addresses and vehicle specifications.">Täytä nouto- ja toimitustiedot sekä auton perustiedot.</p>
+        <form id="orderForm">
+          <div class="fields">
+            <div class="field">
+              <label data-fi="Noutopaikka" data-en="Pickup City">Noutopaikka</label>
+              <input id="inFrom" placeholder="Porvoo" required>
+            </div>
+            <div class="field">
+              <label data-fi="Toimituspaikka" data-en="Destination City">Toimituspaikka</label>
+              <input id="inTo" placeholder="Helsinki" required>
+            </div>
+            <div class="field">
+              <label data-fi="Arvioitu matka (km)" data-en="Estimated Distance (km)">Arvioitu matka (km)</label>
+              <input id="inKm" type="number" min="5" value="50" required>
+            </div>
+            <div class="field">
+              <label data-fi="Toivottu päivämäärä" data-en="Preferred Date">Toivottu päivämäärä</label>
+              <input id="inDate" type="date" value="2026-11-22" required>
+            </div>
+            <div class="field">
+              <label data-fi="Toivottu kellonaika" data-en="Preferred Time">Toivottu kellonaika</label>
+              <input id="inTime" type="time" value="09:00" required>
+            </div>
+            <div class="field">
+              <label data-fi="Rekisterinumero" data-en="Registration Plate">Rekisterinumero</label>
+              <input id="inReg" placeholder="FIN-202" required>
+            </div>
+            <div class="field">
+              <label data-fi="Auton merkki ja malli" data-en="Make & Model">Auton merkki ja malli</label>
+              <input id="inCar" placeholder="Volvo XC60" required>
+            </div>
+          </div>
+          <button class="btn block" type="submit" data-fi="Vahvista tilaus ja siirry seurantaan →" data-en="Confirm Order & Track →">Vahvista tilaus ja siirry seurantaan →</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Hinta-arvio" data-en="Instant Price Breakdown">Hinta-arvio</h2>
+        <p class="sub" data-fi="Synkronoitu suoraan ylläpidon hinnoittelun kanssa." data-en="Synced live with Admin pricing settings.">Synkronoitu suoraan ylläpidon hinnoittelun kanssa.</p>
+        <div class="pricebox">
+          <span style="font-size:12px;color:var(--muted)" data-fi="Kokonaishinta (sis. ALV)" data-en="Total Price (incl. VAT)">Kokonaishinta (sis. ALV)</span>
+          <div class="amount" id="calcTotal">— €</div>
+          <div class="line"></div>
+          <div class="row"><span data-fi="Perusmaksu" data-en="Base fee">Perusmaksu</span><b id="calcBase">25,00 €</b></div>
+          <div class="row"><span data-fi="Ajomatka" data-en="Distance">Ajomatka</span><b id="calcKm">50 km</b></div>
+          <div class="row"><span data-fi="Kilometriveloitus" data-en="Distance charge">Kilometriveloitus</span><b id="calcDistCost">55,00 €</b></div>
+          <div class="row"><span data-fi="Palvelu- ja vakuutusmaksu" data-en="Service & insurance fee">Palvelu- ja vakuutusmaksu</span><b id="calcFee">10,00 €</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tracking" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <h2 id="trackTitle">—</h2>
+            <p class="sub" id="trackCar" style="margin:0">—</p>
+          </div>
+          <span class="pill blue" id="trackStatusPill">—</span>
+        </div>
+        <div class="timeline" id="trackTimeline"></div>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Määritetty kuljettaja" data-en="Assigned Driver">Määritetty kuljettaja</h2>
+        <p class="sub" data-fi="Tarkistettu Zemo Siirto -ammattikuljettaja." data-en="Verified Zemo Siirto professional driver.">Tarkistettu Zemo Siirto -ammattikuljettaja.</p>
+        <div class="driver-card" id="driverBox"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+function updateCalc() {
+  const p = ZemoStore.get().pricing;
+  const km = Math.max(1, Number($('inKm').value) || 0);
+  const distCost = km * p.rate;
+  const total = p.base + distCost + p.fee;
+  $('calcBase').textContent = ZemoStore.fmtEur(p.base);
+  $('calcFee').textContent = ZemoStore.fmtEur(p.fee);
+  $('calcKm').textContent = km + ' km';
+  $('calcDistCost').textContent = ZemoStore.fmtEur(distCost);
+  $('calcTotal').textContent = ZemoStore.fmtEur(total);
+}
+$('inKm').addEventListener('input', updateCalc);
+
+// "22.11.2026 klo 09:00"
+const when = o => ZemoStore.fmtDate(o.date) + (o.time ? (lang === 'fi' ? ' klo ' : ' at ') + o.time : '');
+
+function statusBadge(st, o) {
+  // Pickup time passed without a driver (handled by admin).
+  if (o && ZemoStore.isExpired(o)) return `<span class="pill red">${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</span>`;
+  if (st === 'new') return `<span class="pill orange">${lang === 'fi' ? 'Etsii kuljettajaa' : 'Finding Driver'}</span>`;
+  if (st === 'transit') return `<span class="pill blue">${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</span>`;
+  return `<span class="pill green">${lang === 'fi' ? 'Toimitettu' : 'Delivered'}</span>`;
+}
+
+function renderOrders() {
+  const orders = ZemoStore.get().orders;
+  $('activeCount').textContent = orders.filter(o => o.status !== 'delivered').length;
+  $('totalOrdersCount').textContent = orders.length;
+  $('ordersList').innerHTML = orders.map(o => `
+    <div class="order-item">
+      <div>
+        <div class="order-title">#${o.id} · ${o.from} → ${o.to}</div>
+        <div class="order-meta">${o.car} · ${o.km} km · ${when(o)} · <b>${ZemoStore.fmtEur(o.price)}</b></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${statusBadge(o.status, o)}
+        <button class="btn outline" style="padding:8px 12px;font-size:12px" onclick="trackOrder('${o.id}')">${lang === 'fi' ? 'Seuraa' : 'Track'}</button>
+      </div>
+    </div>
+  `).join('');
+  updateCalc();
+}
+
+window.trackOrder = function(id) {
+  const orders = ZemoStore.get().orders;
+  const o = orders.find(x => x.id === id) || orders[0];
+  if (!o) return;
+  $('trackTitle').textContent = `#${o.id} · ${o.from} → ${o.to}`;
+  $('trackCar').textContent = `${o.car} · ${o.km} km · ${ZemoStore.fmtEur(o.price)}`;
+  $('trackStatusPill').outerHTML = statusBadge(o.status, o).replace('class="pill', 'id="trackStatusPill" class="pill');
+
+  if (o.status === 'new') {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vastaanotettu' : 'Order Received'}</strong><small>${when(o)}</small></div>
+      ${ZemoStore.isExpired(o)
+        ? `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</strong><small>${lang === 'fi' ? 'Kuljettajaa ei löytynyt ajoissa. Sovimme kanssasi uuden ajan.' : 'No driver was found in time. We will agree a new time with you.'}</small></div>`
+        : `<div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Vahvistetaan kuljettajaa' : 'Assigning Verified Driver'}</strong><small>${lang === 'fi' ? 'Tilaus näkyy nyt avoimena kuljettajille.' : 'Order is live on the driver job board.'}</small></div>`}
+    `;
+    $('driverBox').innerHTML = `<div class="order-meta">${lang === 'fi' ? 'Kuljettajaa ei ole vielä kiinnitetty.' : 'No driver assigned yet.'}</div>`;
+  } else if (o.status === 'delivered') {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${when(o)}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto noudettu ja tarkastettu' : 'Picked Up & Inspected'}</strong><small>OK</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Toimitettu määränpäähän' : 'Delivered to Destination'}</strong><small>${when(o)}</small></div>
+    `;
+    $('driverBox').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div class="avatar">✓</div><div><strong>${o.driver || 'Mikko Virtanen'}</strong><div class="order-meta">${lang === 'fi' ? 'Kuljetus suoritettu' : 'Completed'}</div></div></div>`;
+  } else {
+    $('trackTimeline').innerHTML = `
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Tilaus vahvistettu' : 'Order Confirmed'}</strong><small>${when(o)}</small></div>
+      <div class="t-step done"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljettaja vahvistettu' : 'Driver Assigned'}</strong><small>${o.driver}</small></div>
+      <div class="t-step active"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Kuljetuksessa' : 'In Transit'}</strong><small>${lang === 'fi' ? 'Reitillä kohteeseen' : 'En route to destination'} ${o.to}</small></div>
+      <div class="t-step"><span class="t-dot"></span><strong>${lang === 'fi' ? 'Auto toimitettu' : 'Delivered'}</strong><small>${lang === 'fi' ? 'Odottaa luovutusta' : 'Awaiting drop-off'}</small></div>
+    `;
+    $('driverBox').innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div class="avatar">ZS</div><div><strong>${o.driver}</strong><div class="order-meta">4.9 ★ · B-ajokortti</div></div></div><a href="tel:+358401234567" class="btn outline" style="text-decoration:none;padding:9px 12px;font-size:12px">${lang === 'fi' ? 'Soita' : 'Call'}</a>`;
+  }
+  switchTab('tracking');
+};
+
+function switchTab(id) {
+  document.querySelectorAll('#custNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== id));
+}
+
+function enterPortal() {
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  $('userBadge').classList.remove('hidden');
+  renderOrders();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('track')) trackOrder(params.get('track'));
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  enterPortal();
+  toast(lang === 'fi' ? 'Tervetuloa asiakasportaaliin!' : 'Welcome to Customer Portal!');
+});
+
+// Auto-enter if coming directly from index booking
+if (new URLSearchParams(window.location.search).get('track')) enterPortal();
+
+$('logoutBtn').addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+  $('userBadge').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#custNav button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+$('orderForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const state = ZemoStore.get();
+  const p = state.pricing;
+  const km = Math.max(1, Number($('inKm').value) || 0);
+  const total = p.base + (p.rate * km) + p.fee;
+  const newId = 'ZS-' + (1043 + state.orders.length);
+  // The pickup date and time must be in the future.
+  if (new Date($('inDate').value + 'T' + $('inTime').value + ':00') <= new Date()) {
+    toast(lang === 'fi' ? 'Valitse tuleva päivä ja kellonaika.' : 'Choose a future date and time.');
+    return;
+  }
+
+  state.orders.unshift({
+    id: newId,
+    from: $('inFrom').value.trim(),
+    to: $('inTo').value.trim(),
+    car: `${$('inCar').value.trim()} (${$('inReg').value.trim().toUpperCase()})`,
+    km: km,
+    price: total,
+    driverPay: Math.round(total * (p.driverShare / 100)),
+    status: 'new',
+    date: $('inDate').value,
+    time: $('inTime').value,
+    customer: 'Aino Korhonen',
+    driver: '',
+    inspected: false
+  });
+  ZemoStore.save(state);
+  renderOrders();
+  trackOrder(newId);
+  toast(lang === 'fi' ? `Tilaus #${newId} luotu!` : `Order #${newId} created!`);
+});
+
+window.addEventListener('storage', renderOrders);
+// Re-check every minute so an order shows "Aika umpeutunut" as soon as its time passes.
+setInterval(() => { if (!$('appView').classList.contains('hidden')) renderOrders(); }, 60000);
+
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderOrders();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-driver">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZEMO</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff;--red:#f26b6b
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1180px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.mark-logo{height:44px;width:auto;display:block;border-radius:9px}
+/* Header: logo centred, ZEMO under it */
+.top{justify-content:center;height:auto;padding-top:8px;padding-bottom:8px}
+.top .brand{flex-direction:column;gap:4px}
+.brand-word{font-size:12px;line-height:1;letter-spacing:.22em}
+.brand small{display:block;font-size:9px;color:var(--orange);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:800;background:#19352a;color:var(--green)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1180px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 15px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:11px 12px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:12px 16px;font-size:14px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.green{background:var(--green);color:#0c2218}
+.btn.blue{background:var(--blue);color:#0b1a2e}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.job{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.job-route{font-size:16px;font-weight:800}
+.job-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.job-pay{font-size:18px;font-weight:900;color:var(--green)}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+
+.check-item{display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:#0e151c}
+.check-item label{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:14px}
+.check-item input[type="checkbox"]{width:18px;height:18px;accent-color:var(--orange)}
+
+.nav-box{background:linear-gradient(145deg,#182430,#0f171f);border:1px solid #354759;border-radius:14px;padding:20px}
+.step-line{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.step-line:last-child{border:0}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--orange);color:#17110d;font-weight:900;display:grid;place-items:center;font-size:13px}
+
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+/* Bottom navigation (after login) */
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:space-around;background:#0d1319;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;color:var(--muted);font-size:11px;font-weight:700;padding:6px 2px;border-radius:10px}
+.bottom-nav button svg{width:22px;height:22px}
+.bottom-nav button.active{color:var(--orange)}
+/* Job whose date is near (see SOON_DAYS) */
+.stat-link{cursor:pointer}
+.stat-link:hover{border-color:var(--orange)}
+.news-item{padding:14px 0;border-bottom:1px solid var(--line)}
+.news-item:last-child{border-bottom:0;padding-bottom:0}
+.news-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.news-date{color:var(--muted);font-size:12px}
+.news-title{font-weight:800;font-size:15px;margin-bottom:4px}
+.news-text{color:var(--muted);font-size:13px;line-height:1.5}
+.job.soon{border:2px solid var(--red);box-shadow:0 0 0 3px rgba(242,107,107,.15)}
+#appView{padding-bottom:96px}
+.toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:540px){.fields{grid-template-columns:1fr}.statgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <img class="mark-logo" alt="ZEMO" src="data:image/webp;base64,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">
+    <span class="brand-word">ZEMO</span>
+  </a>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Kuljettajan kirjautuminen" data-en="Driver Login">Kuljettajan kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu hallitaksesi siirtotehtäviä, tarkastuksia ja ansioita." data-en="Sign in to manage relocation jobs, vehicle inspections, and earnings.">Kirjaudu hallitaksesi siirtotehtäviä, tarkastuksia ja ansioita.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Kuljettajatunnus / Sähköposti" data-en="Driver ID / Email">Kuljettajatunnus / Sähköposti</label>
+        <input type="email" value="mikko.virtanen@zemosiirto.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Kirjaudu kuljettajanäkymään →" data-en="Enter Driver Portal →">Kirjaudu kuljettajanäkymään →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <section id="available" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat stat-link" role="button" tabindex="0" onclick="goToAvailable()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToAvailable()}"><b id="availCount">0</b><span data-fi="Avoimet siirrot" data-en="Available jobs">Avoimet siirrot</span></div>
+      <div class="stat"><b id="myActiveCount">0</b><span data-fi="Omat aktiiviset" data-en="My active jobs">Omat aktiiviset</span></div>
+      <div class="stat"><b style="color:var(--green)">4.9 ★</b><span data-fi="Kuljettaja-arvio" data-en="Driver rating">Kuljettaja-arvio</span></div>
+    </div>
+    <div class="card" id="newsCard">
+      <h2 data-fi="Uutiset ja päätökset" data-en="News and decisions">Uutiset ja päätökset</h2>
+      <p class="sub" data-fi="Uusimmat tiedotteet ja ohjeet kuljettajille." data-en="The latest announcements and instructions for drivers.">Uusimmat tiedotteet ja ohjeet kuljettajille.</p>
+      <div id="newsList"></div>
+    </div>
+  </section>
+
+  <section id="myjobs" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Omat aktiiviset tehtävät" data-en="My Active Jobs">Omat aktiiviset tehtävät</h2>
+      <p class="sub" data-fi="Suorita tarkastus ennen ajoa ja merkitse auto toimitetuksi perillä." data-en="Complete vehicle inspection before driving and mark delivered upon arrival.">Suorita tarkastus ennen ajoa ja merkitse auto toimitetuksi perillä.</p>
+      <div id="myJobsList"></div>
+    </div>
+  </section>
+
+  <section id="inspection" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Nouto- ja luovutustarkastus" data-en="Pickup & Delivery Inspection">Nouto- ja luovutustarkastus</h2>
+        <p class="sub" data-fi="Pakollinen digitaalinen tarkastus ennen ajoon lähtöä." data-en="Mandatory digital inspection before starting the drive.">Pakollinen digitaalinen tarkastus ennen ajoon lähtöä.</p>
+        <form id="inspectionForm">
+          <div class="fields" style="margin-bottom:14px">
+            <div class="field">
+              <label data-fi="Valitse tehtävä" data-en="Select Job">Valitse tehtävä</label>
+              <select id="inspectJobSelect"></select>
+            </div>
+            <div class="field">
+              <label data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
+              <input type="number" id="odoInput" placeholder="84250" required>
+            </div>
+            <div class="field">
+              <label data-fi="Polttoaine / Akku (%)" data-en="Fuel / Battery level (%)">Polttoaine / Akku (%)</label>
+              <select id="fuelInput">
+                <option value="100%">100% (Täysi)</option>
+                <option value="75%" selected>75%</option>
+                <option value="50%">50%</option>
+                <option value="25%">25%</option>
+              </select>
+            </div>
+            <div class="field">
+              <label data-fi="Tarkastusvaihe" data-en="Inspection stage">Tarkastusvaihe</label>
+              <select id="stageInput">
+                <option value="pickup" data-fi="Nouto (Ennen ajoa)" data-en="Pickup (Pre-trip)">Nouto (Ennen ajoa)</option>
+                <option value="delivery" data-fi="Luovutus (Perillä)" data-en="Delivery (Post-trip)">Luovutus (Perillä)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="Kori ja maalipinta tarkastettu" data-en="Exterior body & paint checked">Kori ja maalipinta tarkastettu</span></label></div>
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="Tuulilasi, peilit ja valot kunnossa" data-en="Windshield, mirrors, and lights intact">Tuulilasi, peilit ja valot kunnossa</span></label></div>
+          <div class="check-item"><label><input type="checkbox" required> <span data-fi="4 kulmakuvan ottaminen vahvistettu" data-en="4 corner photos captured and logged">4 kulmakuvan ottaminen vahvistettu</span></label></div>
+
+          <div class="field full" style="margin-top:10px">
+            <label data-fi="Huomiot" data-en="Notes">Huomiot</label>
+            <textarea id="inspectNotes" rows="2" placeholder="Ei havaittuja vaurioita"></textarea>
+          </div>
+          <button class="btn green block" type="submit" data-fi="Vahvista tarkastusraportti ✓" data-en="Submit Inspection Report ✓">Vahvista tarkastusraportti ✓</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Tallennetut raportit" data-en="Logged Reports">Tallennetut raportit</h2>
+        <p class="sub" data-fi="Viimeisimmät tarkastukset." data-en="Recent vehicle condition logs.">Viimeisimmät tarkastukset.</p>
+        <div id="inspectionLogs"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="navigation" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Reittiopastus" data-en="Route Navigation">Reittiopastus</h2>
+        <p class="sub" data-fi="Aktiivisen siirron nouto- ja toimitusosoitteet." data-en="Pickup and drop-off coordinates for your active transfer.">Aktiivisen siirron nouto- ja toimitusosoitteet.</p>
+        <div class="nav-box">
+          <div class="step-line">
+            <span class="step-num">A</span>
+            <div>
+              <strong id="navFrom">Turku — Noutopiste</strong>
+              <div class="job-meta" data-fi="Noutopiste · Avaimet noutopisteen tiskiltä" data-en="Pickup point · Keys at reception desk">Noutopiste · Avaimet noutopisteen tiskiltä</div>
+            </div>
+          </div>
+          <div class="step-line">
+            <span class="step-num">B</span>
+            <div>
+              <strong id="navTo">Pori — Toimituspiste (140 km)</strong>
+              <div class="job-meta" data-fi="Toimituspiste · Ota luovutuskuvat saapuessa" data-en="Drop-off point · Capture delivery photos on arrival">Toimituspiste · Ota luovutuskuvat saapuessa</div>
+            </div>
+          </div>
+          <div style="margin-top:18px">
+            <a id="gmapsLink" href="https://www.google.com/maps/dir/Turku/Pori" target="_blank" class="btn blue" style="text-decoration:none" data-fi="Avaa Google Mapsissa ↗" data-en="Open in Google Maps ↗">Avaa Google Mapsissa ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Ajonaikaiset ohjeet" data-en="Driver Guidelines">Ajonaikaiset ohjeet</h2>
+        <p class="sub" data-fi="Turvallisuus ja protokolla." data-en="Safety and delivery protocol.">Turvallisuus ja protokolla.</p>
+        <div class="job-meta" style="line-height:1.8">
+          • Noudata nopeusrajoituksia ja taloudellista ajotapaa.<br>
+          • Tupakointi ja lemmikit autossa on ehdottomasti kielletty.<br>
+          • Säilytä polttoaine- tai latauskuitit kulukorvausta varten.<br>
+          • Ota luovutuskuvat heti pysäköinnin jälkeen.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="earnings" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Tilityshistoria" data-en="Payout History">Tilityshistoria</h2>
+      <p class="sub" data-fi="Suoritetut kuljetukset ja palkkiot." data-en="Completed deliveries and driver payouts.">Suoritetut kuljetukset ja palkkiot.</p>
+      <table>
+        <thead>
+          <tr><th>ID</th><th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th><th data-fi="Tila" data-en="Status">Tila</th><th data-fi="Palkkio" data-en="Payout">Palkkio</th></tr>
+        </thead>
+        <tbody id="earningsTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="profile" class="tab-panel hidden">
+    <div class="card" style="max-width:650px">
+      <h2 data-fi="Kuljettajaprofiili" data-en="Driver Profile">Kuljettajaprofiili</h2>
+      <p class="sub" data-fi="Henkilötiedot, ajokortti ja tilitystiedot." data-en="Personal details, driving licence, and payout IBAN.">Henkilötiedot, ajokortti ja tilitystiedot.</p>
+      <form id="profileForm" class="fields">
+        <div class="field"><label data-fi="Koko nimi" data-en="Full Name">Koko nimi</label><input value="Mikko Virtanen" required></div>
+        <div class="field"><label data-fi="Puhelinnumero" data-en="Phone Number">Puhelinnumero</label><input value="+358 40 123 4567" required></div>
+        <div class="field"><label data-fi="Ajokorttiluokka" data-en="Licence Class">Ajokorttiluokka</label><select><option selected>B</option><option>C1</option><option>C</option></select></div>
+        <div class="field"><label>IBAN</label><input value="FI21 1234 5600 0007 85" required></div>
+        <div class="field full"><button class="btn" type="submit" data-fi="Tallenna profiili" data-en="Save Profile">Tallenna profiili</button></div>
+      </form>
+      <button class="btn outline block" type="button" onclick="switchTab('earnings')" data-fi="Ansiot →" data-en="Earnings →">Ansiot →</button>
+      <button class="btn outline block" type="button" id="logoutBtn" style="color:var(--red);border-color:var(--red)" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+    </div>
+  </section>
+
+  <section id="search" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Hae tehtäviä" data-en="Search Jobs">Hae tehtäviä</h2>
+      <p class="sub" data-fi="Hae avoimia siirtoja kaupungin, tilausnumeron tai auton mukaan." data-en="Search open transfers by city, order number or car.">Hae avoimia siirtoja kaupungin, tilausnumeron tai auton mukaan.</p>
+      <div class="fields" style="margin-bottom:16px">
+        <div class="field"><input type="search" id="searchInput" placeholder="Helsinki, Lappi, ZS-1042, Toyota…" autocomplete="off"></div>
+        <div class="field"><select id="regionFilter" aria-label="Alue"></select></div>
+      </div>
+      <div id="searchResults"></div>
+    </div>
+  </section>
+
+  <section id="help" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Ohjeet" data-en="Guidelines">Ohjeet</h2>
+        <p class="sub" data-fi="Turvallisuus ja protokolla." data-en="Safety and delivery protocol.">Turvallisuus ja protokolla.</p>
+        <div class="job-meta" style="line-height:1.8">
+          • Tee noutotarkastus ennen ajoon lähtöä.<br>
+          • Noudata nopeusrajoituksia ja taloudellista ajotapaa.<br>
+          • Tupakointi ja lemmikit autossa on ehdottomasti kielletty.<br>
+          • Säilytä polttoaine- tai latauskuitit kulukorvausta varten.<br>
+          • Ota luovutuskuvat heti pysäköinnin jälkeen.
+        </div>
+      </div>
+      <div class="card">
+        <h2 data-fi="Asiakaspalvelu" data-en="Support">Asiakaspalvelu</h2>
+        <p class="sub" data-fi="Ongelmia siirron aikana? Ota yhteyttä." data-en="Problems during a transfer? Contact us.">Ongelmia siirron aikana? Ota yhteyttä.</p>
+        <a class="btn" href="mailto:tuki@zemosiirto.fi" style="text-decoration:none;display:inline-block">tuki@zemosiirto.fi</a>
+      </div>
+    </div>
+  </section>
+
+  <nav class="bottom-nav" id="driverNav" aria-label="Driver">
+    <button class="active" data-tab="available"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span data-fi="Koti" data-en="Home">Koti</span></button>
+    <button data-tab="myjobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15l1.6-4.6A2 2 0 0 1 8.5 9h7a2 2 0 0 1 1.9 1.4L19 15"/><rect x="3" y="15" width="18" height="4" rx="1.5"/><circle cx="7.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/></svg><span data-fi="Omat ajot" data-en="My drives">Omat ajot</span></button>
+    <button data-tab="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span data-fi="Hae" data-en="Search">Hae</span></button>
+    <button data-tab="help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .9-1 1.6v.4"/><path d="M12 17h.01"/></svg><span data-fi="Help" data-en="Help">Help</span></button>
+    <button data-tab="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span data-fi="Profiili" data-en="Profile">Profiili</span></button>
+  </nav>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const DRIVER_NAME = 'Mikko Virtanen';
+const $ = id => document.getElementById(id);
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+// Jobs are listed by pickup date and time (soonest first); a job starting within SOON_HOURS (or overdue) gets a red frame.
+const SOON_HOURS = 24;
+const startOf = j => ZemoStore.startTime(j);
+const isSoon = j => !!j.date && (startOf(j) - Date.now()) / 36e5 <= SOON_HOURS;
+const byTime = (x, y) => ((x.date || '9999') + (x.time || '00:00')).localeCompare((y.date || '9999') + (y.time || '00:00')) || String(x.id).localeCompare(String(y.id));
+// "23.11.2026 klo 08:30"
+const when = j => ZemoStore.fmtDate(j.date) + (j.time ? (lang === 'fi' ? ' klo ' : ' at ') + j.time : '');
+const jobClass = j => 'job' + (isSoon(j) ? ' soon' : '');
+
+function renderAll() {
+  const state = ZemoStore.get();
+  // Jobs whose time has passed are not shown to drivers (they go to admin).
+  const avail = state.orders.filter(o => o.status === 'new' && !ZemoStore.isExpired(o)).sort(byTime);
+  const mine = state.orders.filter(o => o.status === 'transit' && o.driver === DRIVER_NAME).sort(byTime);
+
+  $('availCount').textContent = avail.length;
+  $('myActiveCount').textContent = mine.length;
+
+  // Koti: news and decisions, newest first; items from the last 7 days are marked new.
+  const news = (state.news || []).slice().sort((x, y) => y.date.localeCompare(x.date));
+  $('newsList').innerHTML = news.length ? news.map(n => {
+    const t = n[lang] || n.fi;
+    const fresh = (Date.now() - new Date(n.date + 'T00:00:00')) / 864e5 < 7;
+    return `
+    <div class="news-item">
+      <div class="news-head">
+        <span class="pill ${n.type === 'decision' ? 'orange' : 'green'}">${n.type === 'decision' ? (lang === 'fi' ? 'Päätös' : 'Decision') : (lang === 'fi' ? 'Uutinen' : 'News')}</span>
+        ${fresh ? `<span class="pill">${lang === 'fi' ? 'Uusi' : 'New'}</span>` : ''}
+        <span class="news-date">${ZemoStore.fmtDate(n.date)}</span>
+      </div>
+      <div class="news-title">${t.title}</div>
+      <div class="news-text">${t.text}</div>
+    </div>`;
+  }).join('') : `<p class="sub">${lang === 'fi' ? 'Ei uusia tiedotteita.' : 'No news right now.'}</p>`;
+
+  renderSearch();
+
+  $('myJobsList').innerHTML = mine.length ? mine.map(j => `
+    <div class="${jobClass(j)}">
+      <div>
+        <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)} · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn outline" onclick="openInspection('${j.id}')">${lang === 'fi' ? 'Tarkastus' : 'Inspection'}</button>
+        <button class="btn outline" onclick="openNav('${j.from}','${j.to}',${j.km})">${lang === 'fi' ? 'Reitti' : 'Route'}</button>
+        <button class="btn green" onclick="completeJob('${j.id}')">${lang === 'fi' ? 'Merkitse toimitetuksi' : 'Mark Delivered'}</button>
+      </div>
+    </div>
+  `).join('') : `<p class="sub">${lang === 'fi' ? 'Sinulla ei ole aktiivisia tehtäviä.' : 'You have no active jobs.'}</p>`;
+
+  $('inspectJobSelect').innerHTML = mine.length
+    ? mine.map(j => `<option value="${j.id}">#${j.id} · ${j.from} → ${j.to} (${j.car})</option>`).join('')
+    : `<option value="">${lang === 'fi' ? 'Ei aktiivisia tehtäviä' : 'No active jobs'}</option>`;
+
+  $('inspectionLogs').innerHTML = state.inspections.map(l => `
+    <div class="job">
+      <div>
+        <div class="job-route">#${l.jobId}</div>
+        <div class="job-meta">${l.stage} · ${l.odo} km · ${l.fuel} · ${l.notes}</div>
+      </div>
+      <span class="pill green">OK</span>
+    </div>
+  `).join('');
+
+  $('earningsTable').innerHTML = state.payouts.map(p => `
+    <tr>
+      <td>#${p.id}</td>
+      <td>${p.driver}</td>
+      <td>${p.status === 'paid' ? '<span class="pill green">Maksettu</span>' : '<span class="pill orange">Odottaa tilitystä</span>'}</td>
+      <td><b>${ZemoStore.fmtEur(p.amount)}</b></td>
+    </tr>
+  `).join('');
+}
+
+// Hae: search open jobs by order number, city, car or date.
+function renderSearch() {
+  const q = ($('searchInput').value || '').trim().toLowerCase();
+  const avail = ZemoStore.get().orders.filter(o => o.status === 'new' && !ZemoStore.isExpired(o)).sort(byTime);
+  // Region filter: all regions that have open jobs.
+  const regions = [...new Set(avail.map(j => j.region).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fi'));
+  const chosen = regions.includes($('regionFilter').value) ? $('regionFilter').value : '';
+  $('regionFilter').innerHTML = `<option value="">${lang === 'fi' ? 'Kaikki alueet' : 'All regions'} (${avail.length})</option>` +
+    regions.map(r => `<option value="${r}" ${r === chosen ? 'selected' : ''}>${r} (${avail.filter(j => j.region === r).length})</option>`).join('');
+  const hits = avail
+    .filter(j => !chosen || j.region === chosen)
+    .filter(j => !q || [j.id, j.from, j.to, j.region, j.car, j.date, ZemoStore.fmtDate(j.date)].join(' ').toLowerCase().includes(q));
+  $('searchResults').innerHTML = hits.length ? hits.map(j => `
+    <div class="${jobClass(j)}">
+      <div>
+        <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
+        <div class="job-meta">${j.region ? `<span class="pill">${j.region}</span> · ` : ''}${j.car} · ${j.km} km · ${when(j)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="job-pay">${ZemoStore.fmtEur(j.driverPay)}</span>
+        <button class="btn" onclick="acceptJob('${j.id}')">${lang === 'fi' ? 'Hyväksy tehtävä' : 'Accept Job'}</button>
+      </div>
+    </div>
+  `).join('') : `<p class="sub">${lang === 'fi' ? 'Ei hakutuloksia.' : 'No results.'}</p>`;
+}
+$('searchInput').addEventListener('input', renderSearch);
+$('regionFilter').addEventListener('change', renderSearch);
+
+// Re-check every minute so jobs disappear when their time passes.
+setInterval(() => {
+  const a = document.activeElement;
+  if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
+}, 60000);
+
+// Koti: tapping "Avoimet siirrot" opens the open jobs (Hae tab).
+window.goToAvailable = function() {
+  switchTab('search');
+};
+
+window.openInspection = function(id) {
+  $('inspectJobSelect').value = id;
+  switchTab('inspection');
+};
+
+window.acceptJob = function(id) {
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === id);
+  if (!job) return;
+  if (job.status !== 'new' || ZemoStore.isExpired(job)) {
+    renderAll();
+    showToast(lang === 'fi' ? 'Tehtävän aika on umpeutunut.' : 'This job has expired.');
+    return;
+  }
+  job.driver = DRIVER_NAME;
+  job.status = 'transit';
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? `Tehtävä #${id} hyväksytty!` : `Job #${id} accepted!`);
+};
+
+window.openNav = function(from, to, km) {
+  $('navFrom').textContent = `${from} — Noutopiste`;
+  $('navTo').textContent = `${to} — Toimituspiste (${km} km)`;
+  $('gmapsLink').href = `https://www.google.com/maps/dir/${encodeURIComponent(from)}/${encodeURIComponent(to)}`;
+  switchTab('navigation');
+};
+
+window.completeJob = function(id) {
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === id);
+  if (!job) return;
+  if (!job.inspected) {
+    showToast(lang === 'fi' ? 'Suorita auton tarkastus ennen luovutusta!' : 'Complete vehicle inspection first!');
+    $('inspectJobSelect').value = id;
+    switchTab('inspection');
+    return;
+  }
+  job.status = 'delivered';
+  state.payouts.unshift({
+    id: job.id,
+    driver: DRIVER_NAME,
+    iban: 'FI21 1234 5600 0007 85',
+    amount: job.driverPay,
+    status: 'pending'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? `Siirto #${id} valmis! Palkkio lähetetty tilitykseen.` : `Transfer #${id} completed! Payout queued.`);
+};
+
+function switchTab(tabId) {
+  // Inspection and navigation belong to "Omat ajot", earnings to "Profiili".
+  const navTab = { inspection: 'myjobs', navigation: 'myjobs', earnings: 'profile' }[tabId] || tabId;
+  document.querySelectorAll('#driverNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== tabId));
+  window.scrollTo(0, 0);
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn')?.classList.remove('hidden');
+  $('driverStatusBadge')?.classList.remove('hidden');
+  renderAll();
+  showToast(lang === 'fi' ? 'Tervetuloa kuljettajaportaaliin!' : 'Welcome to Driver Portal!');
+});
+
+// Next sign-in starts on Koti; after logging out, go back to the swipe screen of the main page.
+$('logoutBtn')?.addEventListener('click', () => {
+  switchTab('available');
+  if (window.parent !== window) parent.postMessage({ zemoGo: 'start', splash: true }, '*');
+  else window.location.href = 'index.html';
+});
+$('logoutBtn')?.addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn')?.classList.add('hidden');
+  $('driverStatusBadge')?.classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#driverNav button').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+$('inspectionForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const jobId = $('inspectJobSelect').value;
+  if (!jobId) return;
+  const state = ZemoStore.get();
+  const job = state.orders.find(o => o.id === jobId);
+  if (job) job.inspected = true;
+  state.inspections.unshift({
+    jobId: jobId,
+    stage: $('stageInput').value,
+    odo: $('odoInput').value,
+    fuel: $('fuelInput').value,
+    notes: $('inspectNotes').value || 'OK'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  showToast(lang === 'fi' ? 'Tarkastusraportti tallennettu.' : 'Inspection report saved.');
+});
+
+$('profileForm').addEventListener('submit', e => {
+  e.preventDefault();
+  showToast(lang === 'fi' ? 'Profiili päivitetty.' : 'Profile updated.');
+});
+
+window.addEventListener('storage', renderAll);
+
+$('langBtn')?.addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderAll();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+<script type="text/html" id="page-admin">
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zemo Siirto — Hallintapaneeli (Admin)</title>
+<style>
+:root{
+  --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
+  --ink:#f4f7fa;--muted:#9baab7;--orange:#f28a45;--green:#6bd1a0;--blue:#8ebcff;--red:#f26b6b
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+
+.top{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1240px)/2));background:#0d1319;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.14em;text-decoration:none;color:inherit}
+.mark{width:38px;height:38px;border:2px solid var(--orange);border-radius:11px;display:grid;place-items:center;color:var(--orange);font-size:19px;transform:skew(-7deg)}
+.mark-logo{height:44px;width:auto;display:block;border-radius:9px}
+.brand small{display:block;font-size:9px;color:var(--red);letter-spacing:.22em}
+.topright{display:flex;gap:10px;align-items:center}
+.lang,.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px;border-radius:9px;font-size:13px;text-decoration:none}
+.ghost:hover,.lang:hover{border-color:#4b5d6e}
+.admin-badge{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:800;background:#3a1d22;color:#ff9e9e}
+
+.login-wrap{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:24px}
+.login-card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+.login-card h1{margin:0 0 6px;font-size:24px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+
+.wrap{width:min(1240px,calc(100% - 36px));margin:auto;padding:24px 0 60px}
+.nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.nav button{background:#151f28;color:#c3cfd9;border:1px solid var(--line);padding:10px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap}
+.nav button.active{background:var(--orange);color:#17110d;border-color:var(--orange)}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin-bottom:18px}
+.card h2{margin:0 0 6px;font-size:19px}
+.statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);padding:16px;border-radius:13px}
+.stat b{font-size:24px;display:block}
+.stat span{font-size:12px;color:var(--muted)}
+
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:#c3cdd5;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:9px;padding:10px 12px;outline:none}
+.field input:focus,.field select:focus{border-color:var(--orange)}
+.btn{border:0;border-radius:9px;background:var(--orange);color:#1b120d;font-weight:900;padding:11px 16px;font-size:13px}
+.btn:hover{filter:brightness(1.07)}
+.btn.block{width:100%;margin-top:14px}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:7px}
+.btn.green{background:var(--green);color:#0b2217}
+.btn.red{background:var(--red);color:#260b0b}
+.btn.outline{background:transparent;border:1px solid var(--line);color:var(--ink)}
+
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:620px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
+.pill.orange{background:#4a3021;color:#ffbd8e}
+.pill.blue{background:#1b324b;color:#8ebcff}
+.pill.green{background:#1c3a30;color:#a8f0ce}
+.pill.red{background:#3a1d22;color:#ff9e9e}
+.res-input{background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:7px;padding:6px 8px}
+
+.toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
+@media(max-width:900px){.statgrid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+@media(max-width:540px){.statgrid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html">
+    <img class="mark-logo" alt="ZEMO" src="data:image/webp;base64,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">
+    <span>ZEMO SIIRTO<small>ADMIN CONTROL</small></span>
+  </a>
+  <div class="topright">
+    <a class="ghost" href="index.html" data-fi="← Etusivu" data-en="← Home">← Etusivu</a>
+    <span class="admin-badge hidden" id="adminBadge">Admin · Superuser</span>
+    <button class="lang" id="langBtn">EN</button>
+    <button class="ghost hidden" id="logoutBtn" data-fi="Kirjaudu ulos" data-en="Logout">Kirjaudu ulos</button>
+  </div>
+</header>
+
+<section id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1 data-fi="Ylläpidon kirjautuminen" data-en="Admin Login">Ylläpidon kirjautuminen</h1>
+    <p class="sub" data-fi="Kirjaudu hallitaksesi tilauksia, kuljettajia, hinnoittelua ja maksuja." data-en="Sign in to manage orders, drivers, pricing, and settlements.">Kirjaudu hallitaksesi tilauksia, kuljettajia, hinnoittelua ja maksuja.</p>
+    <form id="loginForm">
+      <div class="field" style="margin-bottom:13px">
+        <label data-fi="Ylläpitäjän sähköposti" data-en="Admin Email">Ylläpitäjän sähköposti</label>
+        <input type="email" value="admin@zemosiirto.fi" required>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label data-fi="Salasana" data-en="Password">Salasana</label>
+        <input type="password" value="••••••••••••" required>
+      </div>
+      <button class="btn block" type="submit" data-fi="Avaa hallintapaneeli →" data-en="Enter Admin Panel →">Avaa hallintapaneeli →</button>
+    </form>
+  </div>
+</section>
+
+<main id="appView" class="wrap hidden">
+  <nav class="nav" id="adminNav">
+    <button class="active" data-tab="dashboard" data-fi="Yleisnäkymä" data-en="Dashboard">Yleisnäkymä</button>
+    <button data-tab="orders" data-fi="Tilaukset" data-en="Orders">Tilaukset</button>
+    <button data-tab="drivers" data-fi="Kuljettajat" data-en="Drivers">Kuljettajat</button>
+    <button data-tab="customers" data-fi="Asiakkaat" data-en="Customers">Asiakkaat</button>
+    <button data-tab="pricing" data-fi="Hinnoittelu" data-en="Pricing">Hinnoittelu</button>
+    <button data-tab="payments" data-fi="Maksut" data-en="Payments">Maksut</button>
+    <button data-tab="settings" data-fi="Asetukset" data-en="Settings">Asetukset</button>
+  </nav>
+
+  <section id="dashboard" class="tab-panel">
+    <div class="statgrid">
+      <div class="stat"><b id="statOrders">0</b><span data-fi="Tilaukset yhteensä" data-en="Total orders">Tilaukset yhteensä</span></div>
+      <div class="stat"><b style="color:var(--green)" id="statRev">0 €</b><span data-fi="Tilauskanta (brutto)" data-en="Gross order volume">Tilauskanta (brutto)</span></div>
+      <div class="stat"><b id="statDrivers">0</b><span data-fi="Vahvistetut kuljettajat" data-en="Verified drivers">Vahvistetut kuljettajat</span></div>
+      <div class="stat"><b style="color:var(--orange)" id="statMargin">0 €</b><span data-fi="Alustan osuus" data-en="Platform net margin">Alustan osuus</span></div>
+    </div>
+
+    <div class="card">
+      <h2 data-fi="Myöhästyneet tehtävät" data-en="Expired Jobs">Myöhästyneet tehtävät</h2>
+      <p class="sub" data-fi="Tehtävät, joiden aika umpeutui ilman kuljettajaa. Ne on poistettu kuljettajien listalta. Anna uusi aika tai kiinnitä kuljettaja." data-en="Jobs whose time passed without a driver. They were removed from the drivers' list. Set a new time or assign a driver.">Tehtävät, joiden aika umpeutui ilman kuljettajaa. Ne on poistettu kuljettajien listalta. Anna uusi aika tai kiinnitä kuljettaja.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th data-fi="Reitti & Auto" data-en="Route & Vehicle">Reitti & Auto</th><th data-fi="Umpeutunut aika" data-en="Expired time">Umpeutunut aika</th><th data-fi="Uusi aika" data-en="New time">Uusi aika</th><th data-fi="Toiminnot" data-en="Actions">Toiminnot</th></tr>
+          </thead>
+          <tbody id="expiredTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Nykyinen hinnoittelumalli" data-en="Active Pricing Model">Nykyinen hinnoittelumalli</h2>
+        <p class="sub" data-fi="Vaikuttaa välittömästi etusivun ja asiakasportaalin laskureihin." data-en="Live calculation parameters synced across all portals.">Vaikuttaa välittömästi etusivun ja asiakasportaalin laskureihin.</p>
+        <table>
+          <tbody>
+            <tr><td data-fi="Perusmaksu" data-en="Base fee">Perusmaksu</td><td><b id="dashBase">25,00 €</b></td></tr>
+            <tr><td data-fi="Kilometritaksa" data-en="Per-km rate">Kilometritaksa</td><td><b id="dashRate">1,10 €/km</b></td></tr>
+            <tr><td data-fi="Palvelumaksu" data-en="Service fee">Palvelumaksu</td><td><b id="dashFee">10,00 €</b></td></tr>
+            <tr><td>ALV / VAT</td><td><b id="dashVat">25,5 %</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Demotietojen hallinta" data-en="Demo Data Controls">Demotietojen hallinta</h2>
+        <p class="sub" data-fi="Palauta alkuperäiset esimerkkitiedot kaikkiin näkymiin." data-en="Reset shared platform state back to default demo values.">Palauta alkuperäiset esimerkkitiedot kaikkiin näkymiin.</p>
+        <button class="btn outline" onclick="resetDemoData()" data-fi="Palauta oletusdata" data-en="Reset Demo Data">Palauta oletusdata</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="orders" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Kaikki siirtotilaukset" data-en="All Relocation Orders">Kaikki siirtotilaukset</h2>
+      <p class="sub" data-fi="Määritä kuljettaja tai päivitä tilauksen tila." data-en="Assign drivers or update order status.">Määritä kuljettaja tai päivitä tilauksen tila.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th data-fi="Reitti & Auto" data-en="Route & Vehicle">Reitti & Auto</th>
+              <th data-fi="Asiakas" data-en="Customer">Asiakas</th>
+              <th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th>
+              <th>Hinta</th>
+              <th>Status</th>
+              <th data-fi="Toiminnot" data-en="Actions">Toiminnot</th>
+            </tr>
+          </thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="drivers" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Kuljettajien hallinta" data-en="Driver Management">Kuljettajien hallinta</h2>
+      <p class="sub" data-fi="Hyväksy uudet hakemukset ja tarkista ajokorttien kelpoisuus." data-en="Approve new applicants and verify licence eligibility.">Hyväksy uudet hakemukset ja tarkista ajokorttien kelpoisuus.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-fi="Nimi" data-en="Name">Nimi</th>
+              <th data-fi="Yhteystiedot" data-en="Contact">Yhteystiedot</th>
+              <th data-fi="Kortti" data-en="Licence">Kortti</th>
+              <th data-fi="Suoritetut" data-en="Trips">Suoritetut</th>
+              <th>Status</th>
+              <th data-fi="Hallinta" data-en="Control">Hallinta</th>
+            </tr>
+          </thead>
+          <tbody id="driversTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="customers" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Rekisteröityneet asiakkaat" data-en="Registered Customers">Rekisteröityneet asiakkaat</h2>
+      <p class="sub" data-fi="Yksityis- ja yritysasiakkaiden tilaushistoria." data-en="Private and B2B customer accounts.">Yksityis- ja yritysasiakkaiden tilaushistoria.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th data-fi="Asiakas" data-en="Customer">Asiakas</th><th data-fi="Tyyppi" data-en="Type">Tyyppi</th><th>Email</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Aino Korhonen</td><td><span class="pill">Yksityinen</span></td><td>aino.korhonen@esimerkki.fi</td><td><span class="pill green">Aktiivinen</span></td></tr>
+            <tr><td>Autoliike Laakkonen Oy</td><td><span class="pill blue">Yritys (B2B)</span></td><td>logistiikka@laakkonen-demo.fi</td><td><span class="pill green">Sopimusasiakas</span></td></tr>
+            <tr><td>Matti Meikäläinen</td><td><span class="pill">Yksityinen</span></td><td>matti.m@esimerkki.fi</td><td><span class="pill green">Aktiivinen</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="tab-panel hidden">
+    <div class="grid">
+      <div class="card">
+        <h2 data-fi="Hinnoitteluasetukset" data-en="Pricing Configuration">Hinnoitteluasetukset</h2>
+        <p class="sub" data-fi="Tallennus päivittää automaattisesti kaikkien portaalien hintalaskurit." data-en="Saving updates price calculators across all portals immediately.">Tallennus päivittää automaattisesti kaikkien portaalien hintalaskurit.</p>
+        <form id="pricingForm" class="fields">
+          <div class="field"><label data-fi="Perusmaksu (€)" data-en="Base Fee (€)">Perusmaksu (€)</label><input type="number" id="inBase" step="0.5" required></div>
+          <div class="field"><label data-fi="Kilometriveloitus (€/km)" data-en="Per-km Rate (€/km)">Kilometriveloitus (€/km)</label><input type="number" id="inRate" step="0.05" required></div>
+          <div class="field"><label data-fi="Palvelu- ja vakuutusmaksu (€)" data-en="Service & Insurance Fee (€)">Palvelu- ja vakuutusmaksu (€)</label><input type="number" id="inFee" step="0.5" required></div>
+          <div class="field"><label>ALV % / VAT %</label><input type="number" id="inVat" step="0.5" required></div>
+          <div class="field full"><label data-fi="Kuljettajan palkkio-osuus (%)" data-en="Driver Payout Share (%)">Kuljettajan palkkio-osuus (%)</label><input type="number" id="inDriverShare" min="10" max="95" required></div>
+          <div class="field full"><button class="btn" type="submit" data-fi="Tallenna hinnoittelu" data-en="Save Pricing Rules">Tallenna hinnoittelu</button></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 data-fi="Esimerkkilaskelma (150 km)" data-en="Sample Breakdown (150 km)">Esimerkkilaskelma (150 km)</h2>
+        <p class="sub" data-fi="Esikatselu syötetyillä arvoilla." data-en="Live preview using configured rates.">Esikatselu syötetyillä arvoilla.</p>
+        <table>
+          <tbody>
+            <tr><td data-fi="Asiakkaan hinta (sis. ALV)" data-en="Customer Price (incl. VAT)">Asiakkaan hinta (sis. ALV)</td><td><b id="simCustPrice">—</b></td></tr>
+            <tr><td data-fi="Kuljettajan palkkio" data-en="Driver Payout">Kuljettajan palkkio</td><td><b id="simDriverPay" style="color:var(--green)">—</b></td></tr>
+            <tr><td data-fi="Alustan osuus" data-en="Platform Margin">Alustan osuus</td><td><b id="simMargin" style="color:var(--orange)">—</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="payments" class="tab-panel hidden">
+    <div class="card">
+      <h2 data-fi="Maksut ja kuljettajatilitykset" data-en="Payments & Driver Payouts">Maksut ja kuljettajatilitykset</h2>
+      <p class="sub" data-fi="Hyväksy kuljettajien suorittamien siirtojen tilitykset." data-en="Approve driver settlements for completed deliveries.">Hyväksy kuljettajien suorittamien siirtojen tilitykset.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Tilaus</th><th data-fi="Kuljettaja" data-en="Driver">Kuljettaja</th><th>IBAN</th><th data-fi="Summa" data-en="Amount">Summa</th><th>Status</th><th data-fi="Toiminto" data-en="Action">Toiminto</th></tr>
+          </thead>
+          <tbody id="paymentsTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings" class="tab-panel hidden">
+    <div class="card" style="max-width:680px">
+      <h2 data-fi="Järjestelmäasetukset" data-en="System Settings">Järjestelmäasetukset</h2>
+      <p class="sub" data-fi="Alustan yleiset tiedot ja toiminta-alue." data-en="Platform general configuration and service region.">Alustan yleiset tiedot ja toiminta-alue.</p>
+      <form id="settingsForm" class="fields">
+        <div class="field"><label data-fi="Palvelun nimi" data-en="Platform Name">Palvelun nimi</label><input value="Zemo Siirto"></div>
+        <div class="field"><label data-fi="Asiakaspalvelu" data-en="Support Email">Asiakaspalvelu</label><input value="tuki@zemosiirto.fi"></div>
+        <div class="field"><label data-fi="Toiminta-alue" data-en="Operating Region">Toiminta-alue</label><select><option selected>Koko Suomi / All Finland</option></select></div>
+        <div class="field"><label data-fi="Jakotapa" data-en="Dispatch Mode">Jakotapa</label><select><option selected>Avoin tehtävälista + Manuaalinen</option></select></div>
+        <div class="field full"><button class="btn" type="submit" data-fi="Tallenna asetukset" data-en="Save Settings">Tallenna asetukset</button></div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared.js"><\/script>
+<script>
+let lang = 'fi';
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+
+function renderAll() {
+  const state = ZemoStore.get();
+  const p = state.pricing;
+
+  // Pricing inputs & dash
+  $('inBase').value = p.base;
+  $('inRate').value = p.rate;
+  $('inFee').value = p.fee;
+  $('inVat').value = p.vat;
+  $('inDriverShare').value = p.driverShare;
+
+  $('dashBase').textContent = ZemoStore.fmtEur(p.base);
+  $('dashRate').textContent = ZemoStore.fmtEur(p.rate).replace(' €', ' €/km');
+  $('dashFee').textContent = ZemoStore.fmtEur(p.fee);
+  $('dashVat').textContent = p.vat + ' %';
+  updateSim();
+
+  // Stats
+  const gross = state.orders.reduce((acc, o) => acc + Number(o.price || 0), 0);
+  const dPays = state.orders.reduce((acc, o) => acc + Number(o.driverPay || 0), 0);
+  $('statOrders').textContent = state.orders.length;
+  $('statRev').textContent = ZemoStore.fmtEur(gross);
+  $('statMargin').textContent = ZemoStore.fmtEur(gross - dPays);
+  $('statDrivers').textContent = state.drivers.filter(d => d.status === 'active').length;
+
+  // Expired jobs (time passed without a driver) – removed from the driver lists, handled here.
+  const expired = state.orders.map((o, i) => ({ o, i })).filter(x => ZemoStore.isExpired(x.o));
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  $('expiredTable').innerHTML = expired.length ? expired.map(({ o, i }) => `
+    <tr>
+      <td><b>#${o.id}</b></td>
+      <td>${o.from} → ${o.to}<br><small style="color:var(--muted)">${o.car} · ${o.km} km</small></td>
+      <td><span class="pill red">${ZemoStore.fmtDate(o.date)}${o.time ? ' klo ' + o.time : ''}</span></td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input class="res-input" type="date" id="resDate-${i}" value="${tomorrow}" aria-label="Date">
+        <input class="res-input" type="time" id="resTime-${i}" value="${o.time || '09:00'}" aria-label="Time">
+      </div></td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm green" onclick="rescheduleOrder(${i})">${lang === 'fi' ? 'Julkaise uudelleen' : 'Republish'}</button>
+        <button class="btn sm" onclick="assignDriver(${i})">${lang === 'fi' ? 'Kiinnitä Mikko' : 'Assign Mikko'}</button>
+      </div></td>
+    </tr>
+  `).join('') : `<tr><td colspan="5" style="color:var(--muted)">${lang === 'fi' ? 'Ei myöhästyneitä tehtäviä.' : 'No expired jobs.'}</td></tr>`;
+
+  // Orders Table
+  $('ordersTable').innerHTML = state.orders.map((o, i) => `
+    <tr>
+      <td><b>#${o.id}</b></td>
+      <td>${o.from} → ${o.to}<br><small style="color:var(--muted)">${o.car} · ${o.km} km</small></td>
+      <td>${o.customer}</td>
+      <td>${o.driver || '—'}</td>
+      <td><b>${ZemoStore.fmtEur(o.price)}</b></td>
+      <td>
+        ${ZemoStore.isExpired(o) ? `<span class="pill red">${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</span>` :
+          o.status === 'new' ? '<span class="pill orange">Uusi</span>' :
+          o.status === 'transit' ? '<span class="pill blue">Kuljetuksessa</span>' :
+          '<span class="pill green">Toimitettu</span>'}
+      </td>
+      <td>
+        ${o.status === 'new' ? `<button class="btn sm" onclick="assignDriver(${i})">${lang === 'fi' ? 'Kiinnitä Mikko' : 'Assign Mikko'}</button>` :
+          o.status === 'transit' ? `<button class="btn sm green" onclick="markDone(${i})">${lang === 'fi' ? 'Valmis' : 'Complete'}</button>` : '—'}
+      </td>
+    </tr>
+  `).join('');
+
+  // Drivers Table
+  $('driversTable').innerHTML = state.drivers.map((d, i) => `
+    <tr>
+      <td><b>${d.name}</b></td>
+      <td>${d.contact}</td>
+      <td>${d.licence}</td>
+      <td>${d.trips}</td>
+      <td>${d.status === 'active' ? '<span class="pill green">Aktiivinen</span>' : '<span class="pill orange">Odottaa</span>'}</td>
+      <td>
+        ${d.status === 'pending'
+          ? `<button class="btn sm green" onclick="toggleDriver(${i}, 'active')">${lang === 'fi' ? 'Hyväksy' : 'Approve'}</button>`
+          : `<button class="btn sm outline" onclick="toggleDriver(${i}, 'pending')">${lang === 'fi' ? 'Keskeytä' : 'Suspend'}</button>`}
+      </td>
+    </tr>
+  `).join('');
+
+  // Payments Table
+  $('paymentsTable').innerHTML = state.payouts.map((pay, i) => `
+    <tr>
+      <td>#${pay.id}</td>
+      <td>${pay.driver}</td>
+      <td><code>${pay.iban}</code></td>
+      <td><b>${ZemoStore.fmtEur(pay.amount)}</b></td>
+      <td>${pay.status === 'paid' ? '<span class="pill green">Maksettu</span>' : '<span class="pill orange">Odottaa</span>'}</td>
+      <td>
+        ${pay.status === 'pending'
+          ? `<button class="btn sm green" onclick="payDriver(${i})">${lang === 'fi' ? 'Maksa nyt' : 'Pay Now'}</button>`
+          : '✓'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Expired job: publish again to drivers with a new date and time.
+window.rescheduleOrder = function(i) {
+  const state = ZemoStore.get();
+  const o = state.orders[i];
+  if (!o) return;
+  const date = $('resDate-' + i).value, time = $('resTime-' + i).value;
+  if (!date || !time || new Date(date + 'T' + time + ':00') <= new Date()) {
+    toast(lang === 'fi' ? 'Valitse tuleva päivä ja kellonaika.' : 'Choose a future date and time.');
+    return;
+  }
+  o.date = date;
+  o.time = time;
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Tehtävä #${o.id} julkaistu uudelleen kuljettajille.` : `Job #${o.id} republished to drivers.`);
+};
+
+// Re-check every minute so newly expired jobs appear here.
+setInterval(() => {
+  const a = document.activeElement;
+  if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
+}, 60000);
+
+window.assignDriver = function(i) {
+  const state = ZemoStore.get();
+  state.orders[i].driver = 'Mikko Virtanen';
+  state.orders[i].status = 'transit';
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Kuljettaja kiinnitetty tilaukseen #${state.orders[i].id}` : `Driver assigned to #${state.orders[i].id}`);
+};
+
+window.markDone = function(i) {
+  const state = ZemoStore.get();
+  const o = state.orders[i];
+  o.status = 'delivered';
+  state.payouts.unshift({
+    id: o.id,
+    driver: o.driver || 'Mikko Virtanen',
+    iban: 'FI21 1234 5600 0007 85',
+    amount: o.driverPay,
+    status: 'pending'
+  });
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Tilaus #${o.id} merkitty toimitetuksi.` : `Order #${o.id} marked delivered.`);
+};
+
+window.toggleDriver = function(i, st) {
+  const state = ZemoStore.get();
+  state.drivers[i].status = st;
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Kuljettajan tila päivitetty.' : 'Driver status updated.');
+};
+
+window.payDriver = function(i) {
+  const state = ZemoStore.get();
+  state.payouts[i].status = 'paid';
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Tilitys merkitty maksetuksi.' : 'Payout marked paid.');
+};
+
+window.resetDemoData = function() {
+  ZemoStore.reset();
+  renderAll();
+  toast(lang === 'fi' ? 'Oletusdata palautettu kaikkiin näkymiin.' : 'Default demo data restored.');
+};
+
+function updateSim() {
+  const b = Number($('inBase').value) || 0;
+  const r = Number($('inRate').value) || 0;
+  const f = Number($('inFee').value) || 0;
+  const share = (Number($('inDriverShare').value) || 75) / 100;
+  const total = b + (r * 150) + f;
+  const dPay = total * share;
+  const margin = total - dPay;
+  $('simCustPrice').textContent = ZemoStore.fmtEur(total);
+  $('simDriverPay').textContent = ZemoStore.fmtEur(dPay);
+  $('simMargin').textContent = ZemoStore.fmtEur(margin);
+}
+['inBase', 'inRate', 'inFee', 'inDriverShare'].forEach(id => $(id).addEventListener('input', updateSim));
+
+$('pricingForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const state = ZemoStore.get();
+  state.pricing = {
+    base: Number($('inBase').value) || 0,
+    rate: Number($('inRate').value) || 0,
+    fee: Number($('inFee').value) || 0,
+    vat: Number($('inVat').value) || 25.5,
+    driverShare: Number($('inDriverShare').value) || 75
+  };
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? 'Hinnoittelu tallennettu ja synkronoitu!' : 'Pricing saved and synced across portals!');
+});
+
+$('settingsForm').addEventListener('submit', e => {
+  e.preventDefault();
+  toast(lang === 'fi' ? 'Järjestelmäasetukset tallennettu.' : 'System settings saved.');
+});
+
+function switchTab(id) {
+  document.querySelectorAll('#adminNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== id));
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');
+  $('adminBadge').classList.remove('hidden');
+  renderAll();
+  toast(lang === 'fi' ? 'Kirjauduttu ylläpitonäkymään.' : 'Logged into Admin Control.');
+});
+
+$('logoutBtn').addEventListener('click', () => {
+  $('appView').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');
+  $('adminBadge').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+});
+
+document.querySelectorAll('#adminNav button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+window.addEventListener('storage', renderAll);
+
+$('langBtn').addEventListener('click', () => {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  document.documentElement.lang = lang;
+  $('langBtn').textContent = lang === 'fi' ? 'EN' : 'FI';
+  document.querySelectorAll('[data-fi]').forEach(el => {
+    if (el.dataset[lang]) el.textContent = el.dataset[lang];
+  });
+  renderAll();
+});
+<\/script>
+</body>
+</html>
+
+</script>
+
+<script>
+(function () {
+  var NAMES = ['index', 'start', 'customer', 'driver', 'admin'];
+  var frames = {};
+  // Undo the storage escapes. Written split up so this script never contains a closing script tag or comment opener.
+  var CLOSE = '<' + '/script', OPEN_COMMENT = '<' + '!--';
+  var restore = function (s) { return s.split('<\\/script').join(CLOSE).split('<\\!--').join(OPEN_COMMENT); };
+  var shared = document.getElementById('shared-js').textContent;
+  var links = document.getElementById('links-js').textContent;
+
+  function build(name) {
+    var html = restore(document.getElementById('page-' + name).textContent);
+    html = html.replace('<script src="shared.js">' + CLOSE + '>', '<script>' + shared + CLOSE + '>');
+    html = html.replace(/<\/body>/i, '<script>' + links + '<\/script></body>');
+    var f = document.createElement('iframe');
+    f.className = 'page';
+    f.title = name;
+    f.srcdoc = html;
+    document.body.appendChild(f);
+    var vp = html.match(/<meta name="viewport" content="([^"]*)"/i);
+    var title = html.match(/<title>([^<]*)<\/title>/i);
+    frames[name] = { el: f, viewport: vp ? vp[1] : 'width=device-width,initial-scale=1', title: title ? title[1] : 'Zemo Siirto' };
+    return frames[name];
+  }
+
+  function show() {
+    var name = location.hash.replace('#', '');
+    if (NAMES.indexOf(name) < 0) name = 'index';
+    var p = frames[name] || build(name);
+    NAMES.forEach(function (n) { if (frames[n]) frames[n].el.classList.toggle('active', n === name); });
+    document.getElementById('vp').setAttribute('content', p.viewport);
+    document.title = p.title;
+    p.el.focus();
+    if (pendingLogin === name) { pendingLogin = null; signIn(p.el); }
+  }
+
+  // "Kirjaudu" on the main page opens the driver page signed in: submit that page's own login form.
+  var pendingLogin = null;
+  function signIn(frame) {
+    function run() {
+      var d = frame.contentDocument, form = d && d.getElementById('loginForm'), view = d && d.getElementById('loginView');
+      if (form && view && !view.classList.contains('hidden')) form.requestSubmit();
+    }
+    var d = frame.contentDocument;
+    if (d && d.readyState === 'complete' && d.getElementById('loginForm')) run();
+    else frame.addEventListener('load', run, { once: true });
+  }
+
+  window.addEventListener('message', function (e) {
+    if (!e.data || NAMES.indexOf(e.data.zemoGo) < 0) return;
+    if (e.data.login) pendingLogin = e.data.zemoGo;
+    // After a driver logs out, load the swipe page fresh so it looks exactly like the first start.
+    if (e.data.splash && frames.start) { frames.start.el.remove(); delete frames.start; }
+    if (location.hash === '#' + e.data.zemoGo) show(); else location.hash = e.data.zemoGo;
+  });
+  window.addEventListener('hashchange', show);
+  show();
+})();
+</script>
+</body>
+</html>
