@@ -93,7 +93,11 @@ iframe.page.active{display:block}
   function fmtEur(n) {
     return (Number(n) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   }
-  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur };
+  // Pickup moment of a job (a job without a time counts until the end of its day).
+  function startTime(o) { return new Date(o.date + 'T' + (o.time || '23:59') + ':00'); }
+  // An open job whose pickup time has passed without a driver: removed from the driver's lists, handled by admin.
+  function isExpired(o) { return o.status === 'new' && !!o.date && startTime(o).getTime() < Date.now(); }
+  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, startTime: startTime, isExpired: isExpired };
 })();
 </script>
 <script type="text/plain" id="links-js">
@@ -1277,7 +1281,7 @@ function showToast(msg) {
 
 // Jobs are listed by pickup date and time (soonest first); a job starting within SOON_HOURS (or overdue) gets a red frame.
 const SOON_HOURS = 24;
-const startOf = j => new Date(j.date + 'T' + (j.time || '00:00') + ':00');
+const startOf = j => ZemoStore.startTime(j);
 const isSoon = j => !!j.date && (startOf(j) - Date.now()) / 36e5 <= SOON_HOURS;
 const byTime = (x, y) => ((x.date || '9999') + (x.time || '00:00')).localeCompare((y.date || '9999') + (y.time || '00:00')) || String(x.id).localeCompare(String(y.id));
 // "2026-11-23 klo 08:30"
@@ -1286,7 +1290,8 @@ const jobClass = j => 'job' + (isSoon(j) ? ' soon' : '');
 
 function renderAll() {
   const state = ZemoStore.get();
-  const avail = state.orders.filter(o => o.status === 'new').sort(byTime);
+  // Jobs whose time has passed are not shown to drivers (they go to admin).
+  const avail = state.orders.filter(o => o.status === 'new' && !ZemoStore.isExpired(o)).sort(byTime);
   const mine = state.orders.filter(o => o.status === 'transit' && o.driver === DRIVER_NAME).sort(byTime);
 
   $('availCount').textContent = avail.length;
@@ -1348,7 +1353,7 @@ function renderAll() {
 // Hae: search open jobs by order number, city, car or date.
 function renderSearch() {
   const q = ($('searchInput').value || '').trim().toLowerCase();
-  const avail = ZemoStore.get().orders.filter(o => o.status === 'new').sort(byTime);
+  const avail = ZemoStore.get().orders.filter(o => o.status === 'new' && !ZemoStore.isExpired(o)).sort(byTime);
   // Region filter: all regions that have open jobs.
   const regions = [...new Set(avail.map(j => j.region).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'fi'));
   const chosen = regions.includes($('regionFilter').value) ? $('regionFilter').value : '';
@@ -1373,6 +1378,12 @@ function renderSearch() {
 $('searchInput').addEventListener('input', renderSearch);
 $('regionFilter').addEventListener('change', renderSearch);
 
+// Re-check every minute so jobs disappear when their time passes.
+setInterval(() => {
+  const a = document.activeElement;
+  if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
+}, 60000);
+
 window.openInspection = function(id) {
   $('inspectJobSelect').value = id;
   switchTab('inspection');
@@ -1382,6 +1393,11 @@ window.acceptJob = function(id) {
   const state = ZemoStore.get();
   const job = state.orders.find(o => o.id === id);
   if (!job) return;
+  if (job.status !== 'new' || ZemoStore.isExpired(job)) {
+    renderAll();
+    showToast(lang === 'fi' ? 'Tehtävän aika on umpeutunut.' : 'This job has expired.');
+    return;
+  }
   job.driver = DRIVER_NAME;
   job.status = 'transit';
   ZemoStore.save(state);
@@ -1554,6 +1570,8 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06
 .pill.orange{background:#4a3021;color:#ffbd8e}
 .pill.blue{background:#1b324b;color:#8ebcff}
 .pill.green{background:#1c3a30;color:#a8f0ce}
+.pill.red{background:#3a1d22;color:#ff9e9e}
+.res-input{background:#0c1319;border:1px solid #34414d;color:var(--ink);border-radius:7px;padding:6px 8px}
 
 .toast{position:fixed;bottom:20px;right:20px;background:#1c3b30;border:1px solid #34795b;color:#c4f3d9;padding:13px 17px;border-radius:10px;display:none;z-index:50;max-width:340px;font-size:13px}
 @media(max-width:900px){.statgrid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
@@ -1610,6 +1628,19 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06
       <div class="stat"><b style="color:var(--green)" id="statRev">0 €</b><span data-fi="Tilauskanta (brutto)" data-en="Gross order volume">Tilauskanta (brutto)</span></div>
       <div class="stat"><b id="statDrivers">0</b><span data-fi="Vahvistetut kuljettajat" data-en="Verified drivers">Vahvistetut kuljettajat</span></div>
       <div class="stat"><b style="color:var(--orange)" id="statMargin">0 €</b><span data-fi="Alustan osuus" data-en="Platform net margin">Alustan osuus</span></div>
+    </div>
+
+    <div class="card">
+      <h2 data-fi="Myöhästyneet tehtävät" data-en="Expired Jobs">Myöhästyneet tehtävät</h2>
+      <p class="sub" data-fi="Tehtävät, joiden aika umpeutui ilman kuljettajaa. Ne on poistettu kuljettajien listalta. Anna uusi aika tai kiinnitä kuljettaja." data-en="Jobs whose time passed without a driver. They were removed from the drivers' list. Set a new time or assign a driver.">Tehtävät, joiden aika umpeutui ilman kuljettajaa. Ne on poistettu kuljettajien listalta. Anna uusi aika tai kiinnitä kuljettaja.</p>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th data-fi="Reitti & Auto" data-en="Route & Vehicle">Reitti & Auto</th><th data-fi="Umpeutunut aika" data-en="Expired time">Umpeutunut aika</th><th data-fi="Uusi aika" data-en="New time">Uusi aika</th><th data-fi="Toiminnot" data-en="Actions">Toiminnot</th></tr>
+          </thead>
+          <tbody id="expiredTable"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="grid">
@@ -1796,6 +1827,25 @@ function renderAll() {
   $('statMargin').textContent = ZemoStore.fmtEur(gross - dPays);
   $('statDrivers').textContent = state.drivers.filter(d => d.status === 'active').length;
 
+  // Expired jobs (time passed without a driver) – removed from the driver lists, handled here.
+  const expired = state.orders.map((o, i) => ({ o, i })).filter(x => ZemoStore.isExpired(x.o));
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  $('expiredTable').innerHTML = expired.length ? expired.map(({ o, i }) => `
+    <tr>
+      <td><b>#${o.id}</b></td>
+      <td>${o.from} → ${o.to}<br><small style="color:var(--muted)">${o.car} · ${o.km} km</small></td>
+      <td><span class="pill red">${o.date}${o.time ? ' klo ' + o.time : ''}</span></td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input class="res-input" type="date" id="resDate-${i}" value="${tomorrow}" aria-label="Date">
+        <input class="res-input" type="time" id="resTime-${i}" value="${o.time || '09:00'}" aria-label="Time">
+      </div></td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm green" onclick="rescheduleOrder(${i})">${lang === 'fi' ? 'Julkaise uudelleen' : 'Republish'}</button>
+        <button class="btn sm" onclick="assignDriver(${i})">${lang === 'fi' ? 'Kiinnitä Mikko' : 'Assign Mikko'}</button>
+      </div></td>
+    </tr>
+  `).join('') : `<tr><td colspan="5" style="color:var(--muted)">${lang === 'fi' ? 'Ei myöhästyneitä tehtäviä.' : 'No expired jobs.'}</td></tr>`;
+
   // Orders Table
   $('ordersTable').innerHTML = state.orders.map((o, i) => `
     <tr>
@@ -1805,7 +1855,8 @@ function renderAll() {
       <td>${o.driver || '—'}</td>
       <td><b>${ZemoStore.fmtEur(o.price)}</b></td>
       <td>
-        ${o.status === 'new' ? '<span class="pill orange">Uusi</span>' :
+        ${ZemoStore.isExpired(o) ? `<span class="pill red">${lang === 'fi' ? 'Aika umpeutunut' : 'Expired'}</span>` :
+          o.status === 'new' ? '<span class="pill orange">Uusi</span>' :
           o.status === 'transit' ? '<span class="pill blue">Kuljetuksessa</span>' :
           '<span class="pill green">Toimitettu</span>'}
       </td>
@@ -1848,6 +1899,29 @@ function renderAll() {
     </tr>
   `).join('');
 }
+
+// Expired job: publish again to drivers with a new date and time.
+window.rescheduleOrder = function(i) {
+  const state = ZemoStore.get();
+  const o = state.orders[i];
+  if (!o) return;
+  const date = $('resDate-' + i).value, time = $('resTime-' + i).value;
+  if (!date || !time || new Date(date + 'T' + time + ':00') <= new Date()) {
+    toast(lang === 'fi' ? 'Valitse tuleva päivä ja kellonaika.' : 'Choose a future date and time.');
+    return;
+  }
+  o.date = date;
+  o.time = time;
+  ZemoStore.save(state);
+  renderAll();
+  toast(lang === 'fi' ? `Tehtävä #${o.id} julkaistu uudelleen kuljettajille.` : `Job #${o.id} republished to drivers.`);
+};
+
+// Re-check every minute so newly expired jobs appear here.
+setInterval(() => {
+  const a = document.activeElement;
+  if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
+}, 60000);
 
 window.assignDriver = function(i) {
   const state = ZemoStore.get();
