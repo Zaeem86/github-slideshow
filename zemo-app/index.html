@@ -1073,6 +1073,9 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 .bottom-nav button svg{width:22px;height:22px}
 .bottom-nav button.active{color:var(--orange)}
 /* Job whose date is near (see SOON_DAYS) */
+.stat-link{cursor:pointer}
+.stat-link:hover{border-color:var(--orange)}
+#availableCard{scroll-margin-top:84px}
 .job.soon{border:2px solid var(--red);box-shadow:0 0 0 3px rgba(242,107,107,.15)}
 #appView{padding-bottom:96px}
 .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
@@ -1110,11 +1113,11 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 <main id="appView" class="wrap hidden">
   <section id="available" class="tab-panel">
     <div class="statgrid">
-      <div class="stat"><b id="availCount">0</b><span data-fi="Avoimet siirrot" data-en="Available jobs">Avoimet siirrot</span></div>
+      <div class="stat stat-link" role="button" tabindex="0" onclick="goToAvailable()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToAvailable()}"><b id="availCount">0</b><span data-fi="Avoimet siirrot" data-en="Available jobs">Avoimet siirrot</span></div>
       <div class="stat"><b id="myActiveCount">0</b><span data-fi="Omat aktiiviset" data-en="My active jobs">Omat aktiiviset</span></div>
       <div class="stat"><b style="color:var(--green)">4.9 ★</b><span data-fi="Kuljettaja-arvio" data-en="Driver rating">Kuljettaja-arvio</span></div>
     </div>
-    <div class="card">
+    <div class="card" id="availableCard">
       <h2 data-fi="Avoimet siirtotehtävät" data-en="Available Relocation Jobs">Avoimet siirtotehtävät</h2>
       <p class="sub" data-fi="Valitse sopiva siirto ja siirrä se omiin tehtäviisi." data-en="Accept an available transfer to move it to your active jobs.">Valitse sopiva siirto ja siirrä se omiin tehtäviisi.</p>
       <div id="availableList"></div>
@@ -1411,6 +1414,11 @@ setInterval(() => {
   const a = document.activeElement;
   if (!$('appView').classList.contains('hidden') && !(a && a.matches('input, select, textarea'))) renderAll();
 }, 60000);
+
+// Koti: tapping "Avoimet siirrot" scrolls to the open jobs list.
+window.goToAvailable = function() {
+  $('availableCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 window.openInspection = function(id) {
   $('inspectJobSelect').value = id;
