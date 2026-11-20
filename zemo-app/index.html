@@ -1250,7 +1250,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 
   <nav class="bottom-nav" id="driverNav" aria-label="Driver">
     <button class="active" data-tab="available"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span data-fi="Koti" data-en="Home">Koti</span></button>
-    <button data-tab="myjobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15l1.6-4.6A2 2 0 0 1 8.5 9h7a2 2 0 0 1 1.9 1.4L19 15"/><rect x="3" y="15" width="18" height="4" rx="1.5"/><circle cx="7.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/></svg><span data-fi="Oma ajot" data-en="My drives">Oma ajot</span></button>
+    <button data-tab="myjobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15l1.6-4.6A2 2 0 0 1 8.5 9h7a2 2 0 0 1 1.9 1.4L19 15"/><rect x="3" y="15" width="18" height="4" rx="1.5"/><circle cx="7.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/></svg><span data-fi="Omat ajot" data-en="My drives">Omat ajot</span></button>
     <button data-tab="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span data-fi="Hae" data-en="Search">Hae</span></button>
     <button data-tab="help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .9-1 1.6v.4"/><path d="M12 17h.01"/></svg><span data-fi="Help" data-en="Help">Help</span></button>
     <button data-tab="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span data-fi="Profiili" data-en="Profile">Profiili</span></button>
@@ -1408,7 +1408,7 @@ window.completeJob = function(id) {
 };
 
 function switchTab(tabId) {
-  // Inspection and navigation belong to "Oma ajot", earnings to "Profiili".
+  // Inspection and navigation belong to "Omat ajot", earnings to "Profiili".
   const navTab = { inspection: 'myjobs', navigation: 'myjobs', earnings: 'profile' }[tabId] || tabId;
   document.querySelectorAll('#driverNav button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== tabId));
