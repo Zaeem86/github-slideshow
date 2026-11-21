@@ -1376,6 +1376,12 @@ button{cursor:pointer}
 .job{border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .job-route{font-size:16px;font-weight:800}
 .job-meta{font-size:12px;color:var(--muted);margin-top:4px}
+/* Inspection: full details of the trip being inspected */
+.trip-box{border:1px solid var(--line);border-radius:12px;background:#0e151c;padding:14px 16px;margin-bottom:16px}
+.trip-box .job-route{margin-bottom:10px}
+.trip-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.trip-row span{color:var(--muted)}
+.trip-row b{text-align:right}
 .job-pay{font-size:18px;font-weight:900;color:var(--green)}
 .pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
 .pill.orange{background:#4a3021;color:#ffbd8e}
@@ -1471,11 +1477,9 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
         <h2 data-fi="Nouto- ja luovutustarkastus" data-en="Pickup & Delivery Inspection">Nouto- ja luovutustarkastus</h2>
         <p class="sub" data-fi="Pakollinen digitaalinen tarkastus ennen ajoon lähtöä." data-en="Mandatory digital inspection before starting the drive.">Pakollinen digitaalinen tarkastus ennen ajoon lähtöä.</p>
         <form id="inspectionForm">
+          <input type="hidden" id="inspectJobSelect">
+          <div class="trip-box" id="inspectTrip"></div>
           <div class="fields" style="margin-bottom:14px">
-            <div class="field">
-              <label data-fi="Valitse tehtävä" data-en="Select Job">Valitse tehtävä</label>
-              <select id="inspectJobSelect"></select>
-            </div>
             <div class="field">
               <label data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
               <input type="number" id="odoInput" placeholder="84250" required>
@@ -1691,9 +1695,9 @@ function renderAll() {
     </div>
   `).join('') : `<p class="sub">${lang === 'fi' ? 'Sinulla ei ole aktiivisia tehtäviä.' : 'You have no active jobs.'}</p>`;
 
-  $('inspectJobSelect').innerHTML = mine.length
-    ? mine.map(j => `<option value="${j.id}">#${j.id} · ${j.from} → ${j.to} (${j.car})</option>`).join('')
-    : `<option value="">${lang === 'fi' ? 'Ei aktiivisia tehtäviä' : 'No active jobs'}</option>`;
+  // Inspection: keep the chosen job if it is still active, otherwise the first active job.
+  if (!mine.some(j => j.id === $('inspectJobSelect').value)) $('inspectJobSelect').value = mine.length ? mine[0].id : '';
+  renderInspectTrip();
 
   $('inspectionLogs').innerHTML = state.inspections.map(l => `
     <div class="job">
@@ -1754,8 +1758,36 @@ window.goToAvailable = function() {
   switchTab('search');
 };
 
-window.openInspection = function(id) {
+// Full details of the trip shown at the top of the inspection form.
+function renderInspectTrip() {
+  const j = ZemoStore.get().orders.find(o => o.id === $('inspectJobSelect').value);
+  if (!j) {
+    $('inspectTrip').innerHTML = `<p class="sub" style="margin:0">${lang === 'fi' ? 'Ei aktiivisia tehtäviä' : 'No active jobs'}</p>`;
+    return;
+  }
+  const fi = lang === 'fi';
+  const rows = [
+    [fi ? 'Noutopaikka' : 'Pickup', j.from],
+    [fi ? 'Toimituspaikka' : 'Delivery', j.to],
+    [fi ? 'Alue' : 'Region', j.region],
+    [fi ? 'Noutoaika' : 'Pickup time', when(j)],
+    [fi ? 'Auto' : 'Car', j.car],
+    [fi ? 'Matka' : 'Distance', j.km + ' km'],
+    [fi ? 'Asiakas' : 'Customer', j.customer],
+    [fi ? 'Palkkiosi' : 'Your pay', ZemoStore.fmtEur(j.driverPay)],
+    [fi ? 'Tarkastus' : 'Inspection', `<span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (fi ? 'Tarkastettu' : 'Inspected') : (fi ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span>`]
+  ].filter(r => r[1]);
+  $('inspectTrip').innerHTML = `<div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>` +
+    rows.map(r => `<div class="trip-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+}
+
+function selectInspectJob(id) {
   $('inspectJobSelect').value = id;
+  renderInspectTrip();
+}
+
+window.openInspection = function(id) {
+  selectInspectJob(id);
   switchTab('inspection');
 };
 
@@ -1788,7 +1820,7 @@ window.completeJob = function(id) {
   if (!job) return;
   if (!job.inspected) {
     showToast(lang === 'fi' ? 'Suorita auton tarkastus ennen luovutusta!' : 'Complete vehicle inspection first!');
-    $('inspectJobSelect').value = id;
+    selectInspectJob(id);
     switchTab('inspection');
     return;
   }
