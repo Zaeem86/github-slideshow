@@ -1429,6 +1429,20 @@ button{cursor:pointer}
 .photo-slot.done::before{content:'✓';position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--green);color:#0b1a13;display:grid;place-items:center;font-size:13px;z-index:2}
 .photo-slot.missing{border-color:var(--red);color:var(--red)}
 .log-photos{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}
+/* In-app camera (opens when a photo box is tapped) */
+.cam{position:fixed;inset:0;z-index:100;background:#000}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-guide{position:absolute;left:8%;right:8%;top:30%;bottom:30%;display:grid;place-items:center;pointer-events:none;color:rgba(255,255,255,.5)}
+.cam-guide svg{width:100%;height:100%}
+.cam-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(rgba(0,0,0,.65),transparent);color:#fff;font-weight:800;font-size:16px}
+.cam-top button{background:rgba(0,0,0,.45);border:0;color:#fff;width:42px;height:42px;border-radius:50%;font-size:18px}
+.cam-msg{position:absolute;top:38%;left:24px;right:24px;margin:0;text-align:center;color:#fff;background:rgba(0,0,0,.7);padding:16px;border-radius:12px;font-size:14px}
+.cam-bar{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:22px 24px calc(26px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.75))}
+.cam-shot{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.3)}
+.cam-shot:active{transform:scale(.92)}
+.cam-shot:disabled{opacity:.35}
+.cam-file{width:100px;background:rgba(0,0,0,.45);color:#fff;border:1px solid rgba(255,255,255,.45);border-radius:10px;padding:10px 8px;font-weight:800;font-size:13px}
+.cam-spacer{width:100px}
 .log-photos img{width:44px;height:33px;object-fit:cover;border-radius:5px;border:1px solid var(--line)}
 .job-pay{font-size:18px;font-weight:900;color:var(--green)}
 .pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
@@ -1689,6 +1703,17 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
   </nav>
 </main>
 
+<div class="cam hidden" id="camView" role="dialog" aria-modal="true">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div class="cam-guide" id="camGuide"></div>
+  <div class="cam-top"><span id="camTitle"></span><button type="button" id="camClose" aria-label="Sulje">✕</button></div>
+  <p class="cam-msg hidden" id="camMsg"></p>
+  <div class="cam-bar">
+    <button type="button" class="cam-file" id="camFile" data-fi="Galleria" data-en="Gallery">Galleria</button>
+    <button type="button" class="cam-shot" id="camShot" aria-label="Ota kuva"></button>
+    <span class="cam-spacer"></span>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="shared.js"><\/script>
@@ -1908,21 +1933,94 @@ function clearPhotos() {
   });
 }
 
+function setPhoto(sl, src) {
+  photos[sl.dataset.slot] = src;
+  let img = sl.querySelector('img');
+  if (!img) { img = document.createElement('img'); img.alt = ''; sl.prepend(img); }
+  img.src = src;
+  sl.classList.add('done');
+  sl.classList.remove('missing');
+}
+
+// Photo from the phone's own camera app or gallery (fallback).
 document.querySelectorAll('.photo-slot input').forEach(inp => inp.addEventListener('change', async () => {
   const sl = inp.closest('.photo-slot'), file = inp.files[0];
   if (!file) return;
   try {
-    const src = await shrinkPhoto(file);
-    photos[sl.dataset.slot] = src;
-    let img = sl.querySelector('img');
-    if (!img) { img = document.createElement('img'); img.alt = ''; sl.prepend(img); }
-    img.src = src;
-    sl.classList.add('done');
-    sl.classList.remove('missing');
+    setPhoto(sl, await shrinkPhoto(file));
   } catch (e) {
     showToast(lang === 'fi' ? 'Kuvaa ei voitu lukea. Yritä uudelleen.' : 'Could not read the photo. Try again.');
   }
 }));
+
+// Tapping a photo box opens the camera inside the app, with the guide picture on top.
+let camStream = null, camSlot = null, camFailed = false;
+document.querySelectorAll('.photo-slot').forEach(sl => sl.addEventListener('click', e => {
+  if (e.target.tagName === 'INPUT') return;
+  e.preventDefault();
+  openCamera(sl);
+}));
+
+async function openCamera(sl) {
+  camSlot = sl;
+  camFailed = false;
+  $('camTitle').textContent = sl.querySelector('.cap').textContent;
+  // Guide picture: copy of the box's picture (ids renamed so they stay unique).
+  $('camGuide').innerHTML = (sl.querySelector('svg')?.outerHTML || '')
+    .replace(/id="(\w+)"/g, 'id="$1Cam"').replace(/url\(#(\w+)\)/g, 'url(#$1Cam)');
+  $('camMsg').classList.add('hidden');
+  $('camFile').textContent = lang === 'fi' ? 'Galleria' : 'Gallery';
+  $('camShot').disabled = true;
+  $('camView').classList.remove('hidden');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return cameraFailed();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+    if (camSlot !== sl) { stream.getTracks().forEach(t => t.stop()); return; }   // closed while waiting
+    camStream = stream;
+    $('camVideo').srcObject = stream;
+    await $('camVideo').play().catch(() => {});
+    $('camShot').disabled = false;
+  } catch (err) {
+    if (camSlot === sl) cameraFailed();
+  }
+}
+
+function cameraFailed() {
+  camFailed = true;
+  $('camMsg').textContent = lang === 'fi'
+    ? 'Kameraa ei voitu avata tässä. Salli kameran käyttö selaimen asetuksista tai käytä puhelimen kameraa.'
+    : 'The camera could not be opened here. Allow camera access in the browser settings or use the phone camera.';
+  $('camMsg').classList.remove('hidden');
+  $('camFile').textContent = lang === 'fi' ? 'Puhelimen kamera' : 'Phone camera';
+}
+
+function closeCamera() {
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null;
+  camSlot = null;
+  $('camVideo').srcObject = null;
+  $('camView').classList.add('hidden');
+}
+
+$('camShot').addEventListener('click', () => {
+  const v = $('camVideo');
+  if (!camSlot || !v.videoWidth) return;
+  const k = Math.min(1, 480 / Math.max(v.videoWidth, v.videoHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  setPhoto(camSlot, c.toDataURL('image/jpeg', 0.6));
+  closeCamera();
+});
+$('camClose').addEventListener('click', closeCamera);
+// Gallery, or the phone's own camera app if the in-app camera is not available.
+$('camFile').addEventListener('click', () => {
+  const inp = camSlot.querySelector('input'), useCamera = camFailed;
+  closeCamera();
+  if (useCamera) inp.setAttribute('capture', 'environment'); else inp.removeAttribute('capture');
+  inp.click();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('camView').classList.contains('hidden')) closeCamera(); });
 
 // Title follows the inspection stage.
 function updatePhotoTitle() {
@@ -2624,6 +2722,7 @@ $('langBtn').addEventListener('click', () => {
     html = html.replace(/<\/body>/i, '<script>' + links + '<\/script></body>');
     var f = document.createElement('iframe');
     f.className = 'page';
+    f.allow = 'camera';
     f.title = name;
     f.srcdoc = html;
     document.body.appendChild(f);
