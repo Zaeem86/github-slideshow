@@ -1568,13 +1568,6 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
                 <option value="25%">25%</option>
               </select>
             </div>
-            <div class="field">
-              <label data-fi="Tarkastusvaihe" data-en="Inspection stage">Tarkastusvaihe</label>
-              <select id="stageInput">
-                <option value="pickup" data-fi="Nouto (Ennen ajoa)" data-en="Pickup (Pre-trip)">Nouto (Ennen ajoa)</option>
-                <option value="delivery" data-fi="Luovutus (Perillä)" data-en="Delivery (Post-trip)">Luovutus (Perillä)</option>
-              </select>
-            </div>
           </div>
 
 
@@ -1867,6 +1860,7 @@ function renderInspectTrip() {
   $('inspectTrip').innerHTML = `<div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>` +
     rows.map(r => `<div class="trip-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
   renderInspectCustomer(j);
+  updatePhotoTitle();
 }
 
 // Customer details and ways to contact them (call, SMS, WhatsApp, email).
@@ -2037,14 +2031,19 @@ $('camFile').addEventListener('click', () => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('camView').classList.contains('hidden')) closeCamera(); });
 
+// Stage is automatic: the first inspection of a job is the pickup, the next one the delivery.
+function currentStage(jobId) {
+  return ZemoStore.get().inspections.some(l => l.jobId === jobId && l.stage === 'pickup') ? 'delivery' : 'pickup';
+}
+
 // Title follows the inspection stage.
 function updatePhotoTitle() {
-  const t = $('photoTitle'), pickup = $('stageInput').value === 'pickup';
+  const t = $('photoTitle'), pickup = currentStage($('inspectJobSelect').value) === 'pickup';
   t.dataset.fi = pickup ? 'Kuvat ennen ajoa' : 'Kuvat perillä';
   t.dataset.en = pickup ? 'Photos before driving' : 'Photos at delivery';
   t.textContent = t.dataset[lang];
 }
-$('stageInput').addEventListener('change', updatePhotoTitle);
+
 
 window.openInspection = function(id) {
   selectInspectJob(id);
@@ -2146,7 +2145,7 @@ $('inspectionForm').addEventListener('submit', e => {
   if (job) job.inspected = true;
   state.inspections.unshift({
     jobId: jobId,
-    stage: $('stageInput').value,
+    stage: currentStage(jobId),
     odo: $('odoInput').value,
     fuel: $('fuelInput').value,
     notes: $('inspectNotes').value || 'OK',
