@@ -22,7 +22,7 @@ iframe.page.active{display:block}
    Shared state for all pages, stored in localStorage: pricing, orders, drivers, payouts, inspections. */
 (function () {
   var KEY = 'zemoSiirtoState';
-  var SEED_VERSION = 4; // v2: more open jobs across Finland's regions · v3: pickup times · v4: driver news
+  var SEED_VERSION = 5; // v2: more open jobs across Finland's regions · v3: pickup times · v4: driver news · v5: customer contacts
   function defaults() {
     var pricing = { base: 25, rate: 1.10, fee: 10, vat: 25.5, driverShare: 75 };
     function price(km) { return pricing.base + pricing.rate * km + pricing.fee; }
@@ -52,6 +52,12 @@ iframe.page.active{display:block}
       drivers: [
         { name: 'Mikko Virtanen', contact: '+358 40 123 4567', licence: 'B', trips: 9, status: 'active' },
         { name: 'Laura Nieminen', contact: 'laura.nieminen@esimerkki.fi', licence: 'B', trips: 0, status: 'pending' }
+      ],
+      // Customer contact details (shown to the driver of an accepted job). Demo data.
+      customers: [
+        { name: 'Aino Korhonen', type: 'private', phone: '+358 40 765 4321', email: 'aino.korhonen@esimerkki.fi' },
+        { name: 'Matti Meikäläinen', type: 'private', phone: '+358 50 234 5678', email: 'matti.m@esimerkki.fi' },
+        { name: 'Autoliike Laakkonen Oy', type: 'business', contactPerson: 'Jari Laakkonen', phone: '+358 44 987 6543', email: 'logistiikka@laakkonen-demo.fi' }
       ],
       payouts: [],
       inspections: [],
@@ -92,6 +98,7 @@ iframe.page.active{display:block}
       byId[o.id] = o;
     });
     if (!s.news) s.news = defaults().news;
+    if (!s.customers) s.customers = defaults().customers;
     s.seedVersion = SEED_VERSION;
   }
   function get() {
@@ -1382,6 +1389,11 @@ button{cursor:pointer}
 .trip-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
 .trip-row span{color:var(--muted)}
 .trip-row b{text-align:right}
+.trip-title{font-size:15px;font-weight:800;margin-bottom:10px}
+.contact-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.contact-btns a{display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 8px;border-radius:9px;border:1px solid var(--line);background:#131b23;color:var(--ink);font-weight:800;font-size:13px;text-decoration:none}
+.contact-btns a.call{background:var(--green);border-color:var(--green);color:#0b1a13}
+.contact-btns svg{width:16px;height:16px}
 .job-pay{font-size:18px;font-weight:900;color:var(--green)}
 .pill{display:inline-block;padding:4px 9px;border-radius:99px;font-size:11px;font-weight:800;background:#26333e;color:#c9d8e3}
 .pill.orange{background:#4a3021;color:#ffbd8e}
@@ -1479,6 +1491,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
         <form id="inspectionForm">
           <input type="hidden" id="inspectJobSelect">
           <div class="trip-box" id="inspectTrip"></div>
+          <div class="trip-box" id="inspectCustomer"></div>
           <div class="fields" style="margin-bottom:14px">
             <div class="field">
               <label data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
@@ -1763,6 +1776,7 @@ function renderInspectTrip() {
   const j = ZemoStore.get().orders.find(o => o.id === $('inspectJobSelect').value);
   if (!j) {
     $('inspectTrip').innerHTML = `<p class="sub" style="margin:0">${lang === 'fi' ? 'Ei aktiivisia tehtäviä' : 'No active jobs'}</p>`;
+    renderInspectCustomer(null);
     return;
   }
   const fi = lang === 'fi';
@@ -1773,12 +1787,40 @@ function renderInspectTrip() {
     [fi ? 'Noutoaika' : 'Pickup time', when(j)],
     [fi ? 'Auto' : 'Car', j.car],
     [fi ? 'Matka' : 'Distance', j.km + ' km'],
-    [fi ? 'Asiakas' : 'Customer', j.customer],
     [fi ? 'Palkkiosi' : 'Your pay', ZemoStore.fmtEur(j.driverPay)],
     [fi ? 'Tarkastus' : 'Inspection', `<span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (fi ? 'Tarkastettu' : 'Inspected') : (fi ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span>`]
   ].filter(r => r[1]);
   $('inspectTrip').innerHTML = `<div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>` +
     rows.map(r => `<div class="trip-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+  renderInspectCustomer(j);
+}
+
+// Customer details and ways to contact them (call, SMS, WhatsApp, email).
+function renderInspectCustomer(j) {
+  const box = $('inspectCustomer'), fi = lang === 'fi';
+  if (!j) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const c = (ZemoStore.get().customers || []).find(x => x.name === j.customer) || { name: j.customer };
+  const rows = [
+    [fi ? 'Nimi' : 'Name', c.name],
+    [fi ? 'Asiakastyyppi' : 'Customer type', c.type === 'business' ? (fi ? 'Yritys' : 'Business') : c.type === 'private' ? (fi ? 'Yksityinen' : 'Private') : ''],
+    [fi ? 'Yhteyshenkilö' : 'Contact person', c.contactPerson],
+    [fi ? 'Puhelin' : 'Phone', c.phone],
+    [fi ? 'Sähköposti' : 'Email', c.email]
+  ].filter(r => r[1]);
+  const tel = (c.phone || '').replace(/[^+\d]/g, '');
+  const subject = encodeURIComponent((fi ? 'Auton siirto #' : 'Car transfer #') + j.id);
+  const icon = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const btns = [
+    tel && `<a class="call" href="tel:${tel}">${icon('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>')}${fi ? 'Soita' : 'Call'}</a>`,
+    tel && `<a href="sms:${tel}">${icon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>')}${fi ? 'Tekstiviesti' : 'SMS'}</a>`,
+    tel && `<a href="https://wa.me/${tel.replace('+', '')}" target="_blank" rel="noopener">${icon('<path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.3z"/>')}WhatsApp</a>`,
+    c.email && `<a href="mailto:${c.email}?subject=${subject}">${icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>')}${fi ? 'Sähköposti' : 'Email'}</a>`
+  ].filter(Boolean);
+  box.innerHTML = `<div class="trip-title">${fi ? 'Asiakkaan tiedot' : 'Customer details'}</div>` +
+    rows.map(r => `<div class="trip-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('') +
+    (btns.length ? `<div class="contact-btns">${btns.join('')}</div>`
+                 : `<p class="sub" style="margin:10px 0 0">${fi ? 'Asiakkaan yhteystiedot puuttuvat. Ota yhteys tukeen.' : 'No contact details. Contact support.'}</p>`);
 }
 
 function selectInspectJob(id) {
