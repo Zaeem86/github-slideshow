@@ -1953,25 +1953,30 @@ document.querySelectorAll('.photo-slot input').forEach(inp => inp.addEventListen
   }
 }));
 
-// Tapping a photo box opens the camera inside the app, with the guide picture on top.
-let camStream = null, camSlot = null, camFailed = false;
+// Tapping a photo box opens the phone camera right away (the tap itself opens it, so every phone allows it).
+// If this site already has camera permission, the camera opens inside the app with the guide picture instead.
+let camStream = null, camSlot = null, camFailed = false, camGranted = false;
+try {
+  navigator.permissions.query({ name: 'camera' }).then(st => {
+    camGranted = st.state === 'granted';
+    st.onchange = () => { camGranted = st.state === 'granted'; };
+  }).catch(() => {});
+} catch (e) {}
+function inAppCameraPossible() {
+  return camGranted && window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
+    !(document.featurePolicy && !document.featurePolicy.allowsFeature('camera'));
+}
 document.querySelectorAll('.photo-slot').forEach(sl => sl.addEventListener('click', e => {
   if (e.target.tagName === 'INPUT') return;
+  if (!inAppCameraPossible()) {
+    sl.querySelector('input').setAttribute('capture', 'environment');   // the box's own tap opens the phone camera
+    return;
+  }
   e.preventDefault();
   openCamera(sl);
 }));
 
-// The phone's own camera app (used when the camera cannot run inside the app).
-function openPhoneCamera(sl) {
-  const inp = sl.querySelector('input');
-  inp.setAttribute('capture', 'environment');
-  inp.click();
-}
-
 async function openCamera(sl) {
-  // No camera access in this browser/page: open the phone camera straight away.
-  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return openPhoneCamera(sl);
-  const tappedAt = Date.now();
   camSlot = sl;
   camFailed = false;
   $('camTitle').textContent = sl.querySelector('.cap').textContent;
@@ -1990,11 +1995,7 @@ async function openCamera(sl) {
     await $('camVideo').play().catch(() => {});
     $('camShot').disabled = false;
   } catch (err) {
-    if (camSlot !== sl) return;
-    // Camera refused: open the phone camera automatically while the tap still counts
-    // (browsers only allow it shortly after a tap); otherwise show the button.
-    if (Date.now() - tappedAt < 4000) { closeCamera(); openPhoneCamera(sl); }
-    else cameraFailed();
+    if (camSlot === sl) cameraFailed();
   }
 }
 
