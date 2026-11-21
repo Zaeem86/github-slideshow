@@ -2195,8 +2195,8 @@ function gpsStep() {
   openModal({
     icon: 'gps', warn: true,
     title: fi ? 'Ota GPS käyttöön' : 'Turn on GPS',
-    text: fi ? 'Sijainnin on oltava päällä koko ajon ajan, jotta asiakas ja ZEMO voivat seurata siirtoa. Ajoa ei voi jatkaa ennen kuin GPS on päällä.'
-             : 'Location must stay on for the whole trip so the customer and ZEMO can follow the transfer. You cannot continue before GPS is on.',
+    text: fi ? 'Sijainnin on oltava päällä koko ajon ajan.'
+             : 'Location must stay on for the whole trip.',
     ok: fi ? 'Ota GPS käyttöön' : 'Turn on GPS',
     cancel: fi ? 'Myöhemmin' : 'Later'
   });
