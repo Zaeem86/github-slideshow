@@ -125,7 +125,17 @@ iframe.page.active{display:block}
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
     return m ? m[3] + '.' + m[2] + '.' + m[1] : (iso || '');
   }
-  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, fmtDate: fmtDate, startTime: startTime, isExpired: isExpired };
+  // Finnish cities (lat, lon) for prices and maps.
+  var CITIES = {
+    'Helsinki': [60.1699, 24.9384], 'Espoo': [60.2055, 24.6559], 'Vantaa': [60.2934, 25.0378], 'Porvoo': [60.3932, 25.6650],
+    'Turku': [60.4518, 22.2666], 'Salo': [60.3831, 23.1286], 'Tampere': [61.4978, 23.7610], 'Hämeenlinna': [60.9959, 24.4643],
+    'Lahti': [60.9827, 25.6612], 'Kotka': [60.4664, 26.9458], 'Lappeenranta': [61.0587, 28.1887], 'Mikkeli': [61.6886, 27.2723],
+    'Pori': [61.4851, 21.7974], 'Rauma': [61.1272, 21.5112], 'Jyväskylä': [62.2426, 25.7473], 'Kuopio': [62.8924, 27.6770],
+    'Joensuu': [62.6010, 29.7636], 'Savonlinna': [61.8687, 28.8789], 'Seinäjoki': [62.7903, 22.8403], 'Vaasa': [63.0951, 21.6165],
+    'Kokkola': [63.8385, 23.1307], 'Oulu': [65.0121, 25.4651], 'Kajaani': [64.2273, 27.7285], 'Kemi': [65.7364, 24.5637],
+    'Tornio': [65.8481, 24.1466], 'Rovaniemi': [66.5039, 25.7294]
+  };
+  window.ZemoStore = { get: get, save: save, reset: reset, fmtEur: fmtEur, fmtDate: fmtDate, startTime: startTime, isExpired: isExpired, cities: CITIES };
 })();
 </script>
 <script type="text/plain" id="links-js">
@@ -360,15 +370,7 @@ const $ = id => document.getElementById(id);
 let lang = 'fi';
 
 // Finnish cities for the instant price (lat, lon).
-const CITIES = {
-  'Helsinki': [60.1699, 24.9384], 'Espoo': [60.2055, 24.6559], 'Vantaa': [60.2934, 25.0378], 'Porvoo': [60.3932, 25.6650],
-  'Turku': [60.4518, 22.2666], 'Salo': [60.3831, 23.1286], 'Tampere': [61.4978, 23.7610], 'Hämeenlinna': [60.9959, 24.4643],
-  'Lahti': [60.9827, 25.6612], 'Kotka': [60.4664, 26.9458], 'Lappeenranta': [61.0587, 28.1887], 'Mikkeli': [61.6886, 27.2723],
-  'Pori': [61.4851, 21.7974], 'Rauma': [61.1272, 21.5112], 'Jyväskylä': [62.2426, 25.7473], 'Kuopio': [62.8924, 27.6770],
-  'Joensuu': [62.6010, 29.7636], 'Savonlinna': [61.8687, 28.8789], 'Seinäjoki': [62.7903, 22.8403], 'Vaasa': [63.0951, 21.6165],
-  'Kokkola': [63.8385, 23.1307], 'Oulu': [65.0121, 25.4651], 'Kajaani': [64.2273, 27.7285], 'Kemi': [65.7364, 24.5637],
-  'Tornio': [65.8481, 24.1466], 'Rovaniemi': [66.5039, 25.7294]
-};
+const CITIES = ZemoStore.cities;
 $('cities').innerHTML = Object.keys(CITIES).map(c => `<option value="${c}">`).join('');
 const findCity = v => Object.keys(CITIES).find(c => c.toLowerCase() === (v || '').trim().split(',')[0].trim().toLowerCase());
 
@@ -1340,6 +1342,7 @@ $('langBtn').addEventListener('click', () => {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZEMO</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{
   --bg:#0b1015;--panel:#131b23;--panel2:#19232d;--line:#293642;
@@ -1430,6 +1433,31 @@ button{cursor:pointer}
 .photo-slot.done::before{content:'✓';position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--green);color:#0b1a13;display:grid;place-items:center;font-size:13px;z-index:2}
 .photo-slot.missing{border-color:var(--red);color:var(--red)}
 .log-photos{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}
+/* Trip: dialog, GPS and live map */
+.modal{position:fixed;inset:0;z-index:90;background:rgba(3,6,9,.78);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 20px 20px;text-align:center}
+.modal-icon{width:58px;height:58px;margin:0 auto 12px;border-radius:50%;display:grid;place-items:center;background:#1c3a30;color:var(--green)}
+.modal-icon.warn{background:#4a3021;color:var(--orange)}
+.modal-icon svg{width:30px;height:30px}
+.modal-card h3{margin:0 0 8px;font-size:19px}
+.modal-card p{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.55}
+.modal-status{margin:-4px 0 16px;padding:10px;border-radius:10px;font-weight:800;font-size:14px}
+.modal-status.off{background:#3a1f22;color:#ffb4b4}
+.modal-status.wait{background:#26333e;color:#c9d8e3}
+.modal-status.on{background:#1c3a30;color:#a8f0ce}
+.modal-btns{display:flex;flex-direction:column-reverse;gap:10px}
+.modal-btns .btn{width:100%;padding:14px 16px;font-size:15px}
+.gps-badge{position:absolute;right:14px;top:50%;transform:translateY(-50%);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:900;letter-spacing:.04em}
+.gps-badge.on,.gps-pill.on{background:#1c3a30;color:#a8f0ce}
+.gps-badge.off,.gps-pill.off{background:#3a1f22;color:#ffb4b4}
+.gps-badge::before,.gps-pill::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px}
+.gps-badge.on::before,.gps-pill.on::before{animation:gpsPulse 1.4s infinite}
+@keyframes gpsPulse{50%{opacity:.25}}
+.gps-pill{padding:5px 10px;border-radius:99px;font-size:12px;font-weight:900;white-space:nowrap}
+.map-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.trip-map{height:340px;border-radius:14px;border:1px solid var(--line);margin:12px 0 16px;background:#0c1319;z-index:1}
+.trip-map.nomap{display:none}
+.pill.blue{background:#1d2c44;color:#b9d3ff}
 /* In-app camera (opens when a photo box is tapped) */
 .cam{position:fixed;inset:0;z-index:100;background:#000}
 .cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -1492,6 +1520,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
     <img class="mark-logo" alt="ZEMO" src="data:image/webp;base64,UklGRqYMAABXRUJQVlA4IJoMAACwMwCdASqPAGAAPlEijUSjoiEUyYZoOAUEsQBTo6FWP850RNPfw/0ye6Pu8jN2y/RR+pPYJ/Tr9Yvbr/wP2A993mR/a/10/Tv/rPUA/w/UKc+/7L39l/53otXQrxF83fvH205iLSj9lxS7xz+Xf4v8rvc5jMLffq/+y/Mn4q5zCqoZb/4f876HvpD/x/6H4Bv5f/Uv9t/cP3s+Kf2CfsZ7KP66uSdBY36jBaT4NRaLM3FQtDuu6yyCslbkdJL6l/cE6CvejKgZ2vp7S55E3KUyv8fkcMB15agrqTtX6Vzu4v8KE0Qx8SeXXcrZwRXfC2Kzu/s6umz+WfTJQ2U2d0c7dFd1s6wCwhEt7EqH//tI/zvAhhs7hkYSs+FyznlPvwrpUWqbpQIF7E+5U0xMyA/NYEF6MauV0j9zr/TxT/hvIO6OkJKfpGgiZSMPSdHyUtACguujzp9G4z5ZFMGEpT9Wr86EQdLiwgWKMliflXe/FKx258JIww67G8hnShJTr4R4WsjBWtln7yLC0lZTL1MdU2agD2g3h784jD6twH7dU9GjSw/0AAD+/tJ7+sW/NzWg5UfHtqsOX7tkV6ezhSfOWMFkLb1NhZvjZ0/PhuGbysKpvOGoqT2CYQ231z6YgoHotbfpfNuGL0pRJ0xralL+L4HSriywLokrGi2zND511i99dm1felubVcDaLUhA0WaKAoZko6NINsgnwfigECPDrVObKneyzt7sZgFALhl2PZZ8fgwTpzgCHKLlyE5RxYECutQFHbxEu4TYmHe6IKSd+aKJtiURnk5r4giT0MhLh8digFiVLHtHisO2ItoJMW74XKcDpjyW5OuxIj0IZShMsFYCv0/HjjDkW0yOuMovDcWBc85yAFDScuQLnxooRGx++igyfeX+83c2NsFOBznt3j+a0Hmmrw4JBYBySI4LAq7H4PR7exsfVGO1MJPRfrHrF0j1y7EYCU/OegAVyqR0c2YTfllNjZLr3pyPRtbGTIZzcDCaPQqzpXRfcGp0HOEtm7k6yoT7Szke+bKY9sjdQE9tP8r+QYyIaXPeAfArKoQyIb7g++cineQh3QhhZTisj7i+qh5ksARdHeOYoGh7sxoW58RwlBFexwCiQkpRTJiGYaSe5hLd8uful8Nm4j3I4f6isjladbY8JxBA4BKPyKC9eym60ZHFPxveNihk/BZCLDZjR1qtU/MWE89PCJWntCZPzD8J5qdVMI5EqupnOLStU7glWq+fScSXgskOwnUFoBtHMCFjesC/qnlHYeKjjmmr75orqCCsTWVtCnu/+PJ72zqC43Rxh7D43Uy3jN2SBH8KP3DRIBhHRNOgIps1aggcazlxzVnmkyjcPoYpC5qKodm3+rpD+9In4qCJvvaWiNH5DIBN3QV16CKCNbUx/yPprslDxo2XkcvXnLxYIVh7cl76yn4uuwI6BR9QvOW5pk8CQEtmUs1g0EOqZ0i8K6JViRXHK6SAHCVuxehyNB1JDpwbUHgohMcCFpseJaK2wsPlpf1XHe6SolLu8WGGaNDy45Fka5+vsE8TdqM+mxuHt7CyeDqD4VmudmLDEd+zJDTkW8Co1sXbMd4ue6VJpwJHveXq+V++jVEACN8Mz1AIfactMxDCYxIle/Tz5JXdmaYncy7O3HZb/FgzFDXD4a2gIH8Tkfngf3Z/svi4TQlakOIVZMteCKsEoZpMGBGC1p4iYx3V2fd8KBDt6OxR2AKT2yr6JEhQd3gGD5RGk4saD83UFxX55s822a7VItauvnFmgGq9Bv81s/nV97wJelw8EMDblH/4jnFlXbE1Z5Mj+qfbwx3Bscw1bANevS7WEzUhLi6i3HOUQ62q0SaL8mEdHPJw/AGpGLR/H+GStOYmfucdDHANZJJLn0Fu3ollqu2VoPBwC0bCtoLyevMMXWNbMOvppQpYyvExhd5wfo2P46U0/H355H+aFlB/1EEVKq6Whrod+741wubIFQIdG8B65wYAj13VJc5n4EpqTT07plFcOZFF2z4bSs3cTRMPeyxJyfL/0zNMDqIDixYBHwk/fIWv/wTTPXZYwvJn+Kg4OpMd5aTAL24SzEr1F6ElyHdRFbp5K+e/2mpE1wNe1VKMN4yR/SOXBkfGrHEn8/CD1R/hA+Ux/OFMbwyKYxpkZFhnCbw+PJitWaOzbvlBlXM6pzmfk3pOAv9XLpztThMqDnHz9lGYGBkEJcQedfTBp0Jmqxrz0uBXBjdfymJVB7KmtAb8WFlFq0YR6/th45PMLG5LvYMoBoeIa81GQbxfej9sfgNfHFbt8vWduhHzMjkC24aC0wTTBNVzmyFN5yLb4i5e8z5WqeBAwnGILUlhF1omHbqPaJTjjdtLAdIRfXDv5brSbvnk7js1H3gHoESemGTMtCox/3FpcN6U8Az4Cp9x36+wNhMufzMv+KGr6y5r7oAvLrVyew0d0bEBcIWfmgeERQCEWFwWcsRdJ86Gk8pSNzMUzzM1piiB/MkQn2xPP3o3QgT9qbJDwSdkur6fw3A26z/WZxB84VJpO4fb9Pz4+9D6V/yZkxa0WB+byLEwYNVcL9nO5zkrYTozKN3JFgHKIt+YZYjr13Stdt5GtSvY59QA3YsDsY7yjBCxXlHfVjl7gLB32SFnQ7pJ7TPa1z2wPeQpRaew711G8Wcr3Hqd/u79MsO6GeXyQ0G+/PyV3kxbcTuoBgepX+9cLqDV50tWzEaUaKGUgz4Mdm+WR9liLprux6nmQ9C7AWM0IRrDTNJmLzy9q1ni+3NdNpUApvzsnIF1IMudTm+X+FzDi048xuTpk4VxzfoLNI2HzORmN7b3f40OK7Jq1CLf5MLYj/coNOoLKJTl+amlUJ27NOiNw1KW+pWDiKrps4kdhAlQmmHzxU50H4L5TVSesQ2eCQOLMrUynZf/xxQeh8qPU5psTlh/B5dTnVsc3dBV7AGvRIjrSp/pKf343FhfIkr0O2igoSvqKS3ZssuMnOXZEE0ki9DNnFJKcvMxOngN4yLTpw/TMLJup6Ja31/Dsd4oskUaLHJ82QGsO/IwDqBQTcjz+gDNzkfFWcPUyQ+y8X3E6Zo01Jxge0Nnqbx+qCTPMp3zfMPkllFPHdJLf0IjoblmMWeXn7Bql9rJpql6VU1eb/3v9JlQNLRvJBPsTV1PCJlzSOtehJ01Uq+o3/+1yLF25xHU8qCVVpZ879bgnWbCHFazmq9OXa69UGR7F6R+EMcW3U6c1rbE7ly7UISXPXQG/MP//VDejxr44YZVT3ANNhdvn8wd19Y9Z1W4O+UXq0pFqjuxSSI2G2R15eLYZWYgr8NYahmqmxB14nY//I7X9mAcL2ZOBPOu2lNWreU+RXdcuJlWdaQh/wo1woGMufGE14WoeAhLbMpztPSk/6nRFbfn4TX4nA/f7lzsX9AulYXeTe8OyAKTuhcm8nmbLoYjJAjcTCeHjzueiiBWFZcexiNvv9c3tcPO9TBPvwiCv8x0R8e1GLGtU5E5rp3K4njxPmyz/uY9mj6KCFprGNhYxLhec4V88u1y+PdEst6NGq5SLOlZGWZoaILeXqQJMSgd6AP8wks2Pi18ZE/RmurOKJcM/uDZQqJ6x8h1vTgbOhhvGhOW/WzX6KcVxLYyCcV461NruC6G2iNojLb1BCH6lAWN+I0/fkfkL+/towADlf/h+zgg+0nYz0A9IUdAXc1V/qptlCfrLSEDXLTRnDa4tK0dK5YaviO8SIX0UauuAdpMjgT+gyDG9/R8UsaszykLDpZV8Dxx/IKLjRsww1qtiNB/fJVyqy3YYPz28lVpAI7roWH0ME+oXsfdP9XDKdpPp9HeyzlKvJ8oCquTMEq/ozr7QOLodQMkmK3805njk6YwsF4VbGNf7oRVJwFVYqD84ooENeMAinRzAHKt/dfcUnhtS88kS13+eGrFkB1vv+piceLwbiGy0XrrklvDg4isVXy+TwetHij8fuyAL7rlAVRfbVCPeNFRTjvf3Bjf1qtwhLNKFBtDpXSyFqUZ+ImIBXkD6viq7IXTpPCbeBrq9Bq/pA2pqEBII/g6dg/MdmvaamiJ2M3BWyW7K367Gpi0UiHdI8bsvDHam6FwP0j7QaODygPvb0+w4BHE2fzUtTjT/+TDqfuobEw3Fpki0RUxzKMi/xjsVODRlk2Tkn2oKvHvPjHYNyyZ5q+IKM3+74ks6azgHDEDhZ3bu5j58qapY+BRINoRSrP+la3PhnyUZJ7GA/OQgUHN4G+xNi4hZfuyQVXXb6nL2tnx0KNtqkIEf/fO6C2qt5mCvDp2AxCGxsIt8AAA">
     <span class="brand-word">ZEMO</span>
   </a>
+  <span class="gps-badge hidden" id="gpsBadge"></span>
 </header>
 
 <section id="loginView" class="login-wrap">
@@ -1537,8 +1566,8 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
   <section id="inspection" class="tab-panel hidden">
     <div class="grid">
       <div class="card">
-        <h2 data-fi="Nouto- ja luovutustarkastus" data-en="Pickup & Delivery Inspection">Nouto- ja luovutustarkastus</h2>
-        <p class="sub" data-fi="Pakollinen digitaalinen tarkastus ennen ajoon lähtöä." data-en="Mandatory digital inspection before starting the drive.">Pakollinen digitaalinen tarkastus ennen ajoon lähtöä.</p>
+        <h2 id="inspectTitle" data-fi="Nouto- ja luovutustarkastus" data-en="Pickup & Delivery Inspection">Nouto- ja luovutustarkastus</h2>
+        <p class="sub" id="inspectSub" data-fi="Pakollinen digitaalinen tarkastus ennen ajoon lähtöä." data-en="Mandatory digital inspection before starting the drive.">Pakollinen digitaalinen tarkastus ennen ajoon lähtöä.</p>
         <form id="inspectionForm">
           <input type="hidden" id="inspectJobSelect">
           <div class="trip-box" id="inspectTrip"></div>
@@ -1575,7 +1604,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
             <label data-fi="Huomiot" data-en="Notes">Huomiot</label>
             <textarea id="inspectNotes" rows="2" placeholder="Ei havaittuja vaurioita"></textarea>
           </div>
-          <button class="btn green block" type="submit" data-fi="Vahvista tarkastusraportti ✓" data-en="Submit Inspection Report ✓">Vahvista tarkastusraportti ✓</button>
+          <button class="btn green block" type="submit" id="inspectSubmit" data-fi="Vahvista tarkastusraportti ✓" data-en="Submit Inspection Report ✓">Vahvista tarkastusraportti ✓</button>
         </form>
       </div>
 
@@ -1590,8 +1619,11 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
   <section id="navigation" class="tab-panel hidden">
     <div class="grid">
       <div class="card">
-        <h2 data-fi="Reittiopastus" data-en="Route Navigation">Reittiopastus</h2>
-        <p class="sub" data-fi="Aktiivisen siirron nouto- ja toimitusosoitteet." data-en="Pickup and drop-off coordinates for your active transfer.">Aktiivisen siirron nouto- ja toimitusosoitteet.</p>
+        <div class="map-head">
+          <h2 id="navTitle" data-fi="Reitti" data-en="Route">Reitti</h2>
+          <span class="gps-pill hidden" id="navGps"></span>
+        </div>
+        <div class="trip-map" id="tripMap"></div>
         <div class="nav-box">
           <div class="step-line">
             <span class="step-num">A</span>
@@ -1611,6 +1643,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
             <a id="gmapsLink" href="https://www.google.com/maps/dir/Turku/Pori" target="_blank" class="btn blue" style="text-decoration:none" data-fi="Avaa Google Mapsissa ↗" data-en="Open in Google Maps ↗">Avaa Google Mapsissa ↗</a>
           </div>
         </div>
+        <button class="btn green block hidden" id="arriveBtn" type="button" style="margin-top:16px" data-fi="Olen perillä – luovuta auto →" data-en="I have arrived – hand over the car →">Olen perillä – luovuta auto →</button>
       </div>
 
       <div class="card">
@@ -1697,6 +1730,18 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
   </nav>
 </main>
 
+<div class="modal hidden" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <div class="modal-icon" id="modalIcon"></div>
+    <h3 id="modalTitle"></h3>
+    <p id="modalText"></p>
+    <div class="modal-status hidden" id="modalStatus"></div>
+    <div class="modal-btns">
+      <button type="button" class="btn outline" id="modalCancel"></button>
+      <button type="button" class="btn" id="modalOk"></button>
+    </div>
+  </div>
+</div>
 <div class="cam hidden" id="camView" role="dialog" aria-modal="true">
   <video id="camVideo" playsinline muted autoplay></video>
   <div class="cam-guide" id="camGuide"></div>
@@ -1710,6 +1755,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>
 <script src="shared.js"><\/script>
 <script>
 let lang = 'fi';
@@ -1764,19 +1810,17 @@ function renderAll() {
     <div class="${jobClass(j)}">
       <div>
         <div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>
-        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)} · <span class="pill ${j.inspected ? 'green' : 'orange'}">${j.inspected ? (lang === 'fi' ? 'Tarkastettu' : 'Inspected') : (lang === 'fi' ? 'Odottaa tarkastusta' : 'Needs Inspection')}</span></div>
+        <div class="job-meta">${j.car} · ${j.km} km · ${when(j)} · ${tripPill(j)}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button class="btn outline" onclick="openInspection('${j.id}')">${lang === 'fi' ? 'Tarkastus' : 'Inspection'}</button>
-        <button class="btn outline" onclick="openNav('${j.from}','${j.to}',${j.km})">${lang === 'fi' ? 'Reitti' : 'Route'}</button>
-        <button class="btn green" onclick="completeJob('${j.id}')">${lang === 'fi' ? 'Merkitse toimitetuksi' : 'Mark Delivered'}</button>
-      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${tripButtons(j)}</div>
     </div>
   `).join('') : `<p class="sub">${lang === 'fi' ? 'Sinulla ei ole aktiivisia tehtäviä.' : 'You have no active jobs.'}</p>`;
 
   // Inspection: keep the chosen job if it is still active, otherwise the first active job.
   if (!mine.some(j => j.id === $('inspectJobSelect').value)) $('inspectJobSelect').value = mine.length ? mine[0].id : '';
   renderInspectTrip();
+
+  updateGpsBadge();
 
   $('inspectionLogs').innerHTML = state.inspections.map(l => `
     <div class="job">
@@ -1860,7 +1904,7 @@ function renderInspectTrip() {
   $('inspectTrip').innerHTML = `<div class="job-route">#${j.id} · ${j.from} → ${j.to}</div>` +
     rows.map(r => `<div class="trip-row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
   renderInspectCustomer(j);
-  updatePhotoTitle();
+  updateTripMode();
 }
 
 // Customer details and ways to contact them (call, SMS, WhatsApp, email).
@@ -2031,17 +2075,214 @@ $('camFile').addEventListener('click', () => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('camView').classList.contains('hidden')) closeCamera(); });
 
-// Stage is automatic: the first inspection of a job is the pickup, the next one the delivery.
-function currentStage(jobId) {
-  return ZemoStore.get().inspections.some(l => l.jobId === jobId && l.stage === 'pickup') ? 'delivery' : 'pickup';
+// ---- Trip steps: 1) start: photos → condition OK → GPS on → map  2) arrival: photos → handover ----
+// The trip screen is in "pickup" mode until the start photos are saved, then in "delivery" mode.
+const tripMode = j => (j && j.pickupDone) ? 'delivery' : 'pickup';
+
+function setText(el, fi, en) { el.dataset.fi = fi; el.dataset.en = en; el.textContent = lang === 'fi' ? fi : en; }
+
+function updateTripMode() {
+  const j = ZemoStore.get().orders.find(o => o.id === $('inspectJobSelect').value);
+  const pickup = tripMode(j) === 'pickup';
+  setText($('inspectTitle'), pickup ? 'Aloita ajo' : 'Luovutus perillä', pickup ? 'Start the trip' : 'Handover at destination');
+  setText($('inspectSub'), pickup ? 'Ota kuvat autosta ennen lähtöä. Ajo alkaa, kun kuvat on tallennettu.' : 'Ota kuvat autosta luovutuksessa ennen kuin annat avaimet.',
+    pickup ? 'Photograph the car before leaving. The trip starts once the photos are saved.' : 'Photograph the car at the handover before giving the keys.');
+  setText($('photoTitle'), pickup ? 'Kuvat ennen ajoa' : 'Kuvat perillä', pickup ? 'Photos before driving' : 'Photos at delivery');
+  setText($('inspectSubmit'), pickup ? 'Tallenna kuvat ja aloita ajo →' : 'Tallenna kuvat ja luovuta auto ✓', pickup ? 'Save photos and start the trip →' : 'Save photos and hand over ✓');
 }
 
-// Title follows the inspection stage.
-function updatePhotoTitle() {
-  const t = $('photoTitle'), pickup = currentStage($('inspectJobSelect').value) === 'pickup';
-  t.dataset.fi = pickup ? 'Kuvat ennen ajoa' : 'Kuvat perillä';
-  t.dataset.en = pickup ? 'Photos before driving' : 'Photos at delivery';
-  t.textContent = t.dataset[lang];
+function tripPill(j) {
+  const fi = lang === 'fi';
+  if (j.tripStarted) return `<span class="pill blue">${fi ? 'Ajossa' : 'Driving'}</span>`;
+  if (j.pickupDone) return `<span class="pill orange">${fi ? 'GPS puuttuu' : 'GPS needed'}</span>`;
+  return `<span class="pill orange">${fi ? 'Odottaa lähtöä' : 'Waiting to start'}</span>`;
+}
+function tripButtons(j) {
+  const fi = lang === 'fi';
+  const map = `<button class="btn outline" onclick="openTripMap('${j.id}')">${fi ? 'Kartta' : 'Map'}</button>`;
+  if (j.tripStarted) return map + `<button class="btn green" onclick="openInspection('${j.id}')">${fi ? 'Olen perillä' : 'I have arrived'}</button>`;
+  if (j.pickupDone) return map + `<button class="btn" onclick="beginDrive('${j.id}')">${fi ? 'Ota GPS käyttöön ja aja' : 'Turn on GPS and drive'}</button>`;
+  return map + `<button class="btn" onclick="openInspection('${j.id}')">${fi ? 'Aloita ajo' : 'Start trip'}</button>`;
+}
+
+// ---- Dialog (confirmations and the GPS step) ----
+const ICONS = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>',
+  gps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>'
+};
+let modalDone = null;
+function openModal(o) {
+  $('modalIcon').innerHTML = ICONS[o.icon] || '';
+  $('modalIcon').classList.toggle('warn', !!o.warn);
+  $('modalTitle').textContent = o.title;
+  $('modalText').textContent = o.text;
+  $('modalOk').textContent = o.ok;
+  $('modalOk').disabled = false;
+  $('modalOk').classList.remove('hidden');
+  $('modalCancel').textContent = o.cancel;
+  setModalStatus(null);
+  $('modal').classList.remove('hidden');
+}
+function closeModal() { $('modal').classList.add('hidden'); modalDone = null; }
+function setModalStatus(cls, text) {
+  $('modalStatus').className = 'modal-status' + (cls ? ' ' + cls : ' hidden');
+  $('modalStatus').textContent = text || '';
+}
+// Resolves true (OK) or false (cancel).
+function confirmDialog(o) {
+  return new Promise(resolve => { openModal(o); modalDone = resolve; });
+}
+$('modalCancel').addEventListener('click', () => {
+  if (gpsAsk) return gpsAsk(false);
+  const r = modalDone; closeModal(); if (r) r(false);
+});
+$('modalOk').addEventListener('click', () => {
+  if (gpsAsk) return requestGps();
+  const r = modalDone; closeModal(); if (r) r(true);
+});
+
+// ---- GPS: must stay on for the whole trip ----
+let gpsWatch = null, gpsFix = null, gpsAsk = null, gpsSavedAt = 0;
+const gpsOn = () => gpsWatch !== null && gpsFix !== null;
+
+function updateGpsBadge() {
+  const driving = ZemoStore.get().orders.some(o => o.status === 'transit' && o.driver === DRIVER_NAME && o.tripStarted);
+  const on = gpsOn(), fi = lang === 'fi';
+  [$('gpsBadge'), $('navGps')].forEach(el => {
+    el.classList.toggle('hidden', !driving);
+    el.classList.toggle('on', on);
+    el.classList.toggle('off', !on);
+    el.textContent = on ? (fi ? 'GPS päällä' : 'GPS on') : (fi ? 'GPS pois' : 'GPS off');
+  });
+}
+
+function startGps(onFirstFix, onError) {
+  if (!navigator.geolocation) return onError({ code: 0 });
+  if (gpsWatch !== null) navigator.geolocation.clearWatch(gpsWatch);
+  let first = true;
+  gpsWatch = navigator.geolocation.watchPosition(pos => {
+    gpsFix = pos;
+    updateGpsBadge();
+    showDriverOnMap();
+    saveLastPosition(pos);
+    if (first) { first = false; onFirstFix(); }
+  }, err => {
+    if (first) { first = false; stopGps(); onError(err); }
+    else { gpsFix = null; updateGpsBadge(); }          // signal lost during the trip
+  }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+}
+function stopGps() {
+  if (gpsWatch !== null && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatch);
+  gpsWatch = null; gpsFix = null;
+  updateGpsBadge();
+}
+// Last known position on the order (every 30 s), so the transfer can be followed.
+function saveLastPosition(pos) {
+  if (Date.now() - gpsSavedAt < 30000) return;
+  gpsSavedAt = Date.now();
+  const state = ZemoStore.get();
+  state.orders.filter(o => o.tripStarted && o.status === 'transit' && o.driver === DRIVER_NAME).forEach(o => {
+    o.lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: new Date().toISOString() };
+  });
+  ZemoStore.save(state);
+}
+
+// Asks the driver to turn GPS on. Resolves true once a position is received; the trip cannot go on before that.
+function gpsStep() {
+  if (gpsOn()) return Promise.resolve(true);
+  const fi = lang === 'fi';
+  openModal({
+    icon: 'gps', warn: true,
+    title: fi ? 'Ota GPS käyttöön' : 'Turn on GPS',
+    text: fi ? 'Sijainnin on oltava päällä koko ajon ajan, jotta asiakas ja ZEMO voivat seurata siirtoa. Ajoa ei voi jatkaa ennen kuin GPS on päällä.'
+             : 'Location must stay on for the whole trip so the customer and ZEMO can follow the transfer. You cannot continue before GPS is on.',
+    ok: fi ? 'Ota GPS käyttöön' : 'Turn on GPS',
+    cancel: fi ? 'Myöhemmin' : 'Later'
+  });
+  setModalStatus('off', fi ? '● GPS pois päältä' : '● GPS off');
+  return new Promise(resolve => {
+    gpsAsk = ok => {
+      gpsAsk = null;
+      if (!ok) { stopGps(); closeModal(); }
+      resolve(ok);
+    };
+  });
+}
+function requestGps() {
+  const fi = lang === 'fi';
+  $('modalOk').disabled = true;
+  setModalStatus('wait', fi ? 'Haetaan sijaintia…' : 'Getting your location…');
+  startGps(() => {
+    setModalStatus('on', fi ? '✓ GPS päällä' : '✓ GPS on');
+    $('modalOk').classList.add('hidden');
+    $('modalIcon').classList.remove('warn');
+    setTimeout(() => { closeModal(); if (gpsAsk) gpsAsk(true); }, 1200);
+  }, err => {
+    $('modalOk').disabled = false;
+    $('modalOk').textContent = fi ? 'Yritä uudelleen' : 'Try again';
+    setModalStatus('off', err.code === 1
+      ? (fi ? 'Sijainnin käyttö on estetty. Salli sijainti selaimen asetuksista ja yritä uudelleen.' : 'Location is blocked. Allow it in the browser settings and try again.')
+      : (fi ? 'Sijaintia ei saatu. Varmista, että puhelimen sijainti on päällä.' : 'No location. Make sure location is on in the phone.'));
+  });
+}
+
+// After the start photos: GPS on, then the trip starts and the map opens.
+window.beginDrive = async function(id) {
+  const ok = await gpsStep();
+  if (!ok) {
+    renderAll(); switchTab('myjobs');
+    showToast(lang === 'fi' ? 'Ajoa ei voi aloittaa ilman GPS:ää.' : 'The trip cannot start without GPS.');
+    return;
+  }
+  const state = ZemoStore.get(), job = state.orders.find(o => o.id === id);
+  if (job && !job.tripStarted) { job.tripStarted = true; job.startedAt = new Date().toISOString(); ZemoStore.save(state); }
+  gpsSavedAt = 0;
+  if (gpsFix) saveLastPosition(gpsFix);          // starting position
+  renderAll();
+  openTripMap(id);
+  showToast(lang === 'fi' ? 'Ajo aloitettu. Hyvää matkaa!' : 'Trip started. Drive safely!');
+};
+
+// ---- Map of the trip (pickup A, destination B, driver's live position) ----
+let tripMap = null, mapLayer = null, driverMarker = null;
+window.openTripMap = function(id) {
+  const j = ZemoStore.get().orders.find(o => o.id === id);
+  if (!j) return;
+  const fi = lang === 'fi';
+  $('navFrom').textContent = `${j.from} — ${fi ? 'Noutopiste' : 'Pickup'}`;
+  $('navTo').textContent = `${j.to} — ${fi ? 'Toimituspiste' : 'Drop-off'} (${j.km} km)`;
+  $('gmapsLink').href = `https://www.google.com/maps/dir/${encodeURIComponent(j.from)}/${encodeURIComponent(j.to)}`;
+  setText($('navTitle'), j.tripStarted ? 'Ajo käynnissä' : 'Reitti', j.tripStarted ? 'Trip in progress' : 'Route');
+  $('arriveBtn').classList.toggle('hidden', !j.tripStarted);
+  $('arriveBtn').onclick = () => openInspection(id);
+  switchTab('navigation');
+  drawMap(j);
+  updateGpsBadge();
+  // A trip in progress needs GPS: ask again if it is off (e.g. after reopening the app).
+  if (j.tripStarted && !gpsOn()) gpsStep().then(ok => { if (!ok) showToast(fi ? 'GPS on pidettävä päällä koko ajon ajan.' : 'GPS must stay on during the trip.'); });
+};
+function drawMap(j) {
+  if (!window.L) { $('tripMap').classList.add('nomap'); return; }
+  if (!tripMap) {
+    tripMap = L.map('tripMap').setView([62.5, 25.5], 5);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(tripMap);
+  }
+  setTimeout(() => tripMap.invalidateSize(), 50);
+  if (mapLayer) mapLayer.remove();
+  const C = ZemoStore.cities, a = C[j.from], b = C[j.to], parts = [];
+  if (a) parts.push(L.circleMarker(a, { radius: 8, color: '#f28a45', fillOpacity: 1 }).bindTooltip('A · ' + j.from, { permanent: true, direction: 'top' }));
+  if (b) parts.push(L.circleMarker(b, { radius: 8, color: '#6bd1a0', fillOpacity: 1 }).bindTooltip('B · ' + j.to, { permanent: true, direction: 'top' }));
+  if (a && b) parts.push(L.polyline([a, b], { color: '#f28a45', weight: 4, dashArray: '8 8' }));
+  mapLayer = L.featureGroup(parts).addTo(tripMap);
+  if (parts.length) tripMap.fitBounds(mapLayer.getBounds(), { padding: [40, 40], maxZoom: 11 });
+  showDriverOnMap();
+}
+function showDriverOnMap() {
+  if (!tripMap || !gpsFix || !window.L) return;
+  const ll = [gpsFix.coords.latitude, gpsFix.coords.longitude];
+  if (!driverMarker) driverMarker = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: '#3f8cff', fillOpacity: 1 }).bindTooltip(lang === 'fi' ? 'Sinä' : 'You').addTo(tripMap);
+  else driverMarker.setLatLng(ll);
 }
 
 
@@ -2066,24 +2307,13 @@ window.acceptJob = function(id) {
   showToast(lang === 'fi' ? `Tehtävä #${id} hyväksytty!` : `Job #${id} accepted!`);
 };
 
-window.openNav = function(from, to, km) {
-  $('navFrom').textContent = `${from} — Noutopiste`;
-  $('navTo').textContent = `${to} — Toimituspiste (${km} km)`;
-  $('gmapsLink').href = `https://www.google.com/maps/dir/${encodeURIComponent(from)}/${encodeURIComponent(to)}`;
-  switchTab('navigation');
-};
-
-window.completeJob = function(id) {
+// Arrival: hand over the car (delivery photos are saved first).
+function finishTrip(id) {
   const state = ZemoStore.get();
   const job = state.orders.find(o => o.id === id);
   if (!job) return;
-  if (!job.inspected) {
-    showToast(lang === 'fi' ? 'Suorita auton tarkastus ennen luovutusta!' : 'Complete vehicle inspection first!');
-    selectInspectJob(id);
-    switchTab('inspection');
-    return;
-  }
   job.status = 'delivered';
+  job.deliveredAt = new Date().toISOString();
   state.payouts.unshift({
     id: job.id,
     driver: DRIVER_NAME,
@@ -2092,9 +2322,11 @@ window.completeJob = function(id) {
     status: 'pending'
   });
   ZemoStore.save(state);
+  if (!state.orders.some(o => o.status === 'transit' && o.driver === DRIVER_NAME && o.tripStarted)) stopGps();
   renderAll();
+  switchTab('myjobs');
   showToast(lang === 'fi' ? `Siirto #${id} valmis! Palkkio lähetetty tilitykseen.` : `Transfer #${id} completed! Payout queued.`);
-};
+}
 
 function switchTab(tabId) {
   // Inspection and navigation belong to "Omat ajot", earnings to "Profiili".
@@ -2140,22 +2372,49 @@ $('inspectionForm').addEventListener('submit', e => {
     showToast(lang === 'fi' ? 'Ota kaikki pakolliset kuvat (*).' : 'Take all required photos (*).');
     return;
   }
+  submitTrip(jobId);
+});
+
+async function submitTrip(jobId) {
+  const fi = lang === 'fi';
+  const stage = tripMode(ZemoStore.get().orders.find(o => o.id === jobId));
+  // Confirm that everything is in order.
+  const ok = await confirmDialog(stage === 'pickup' ? {
+    icon: 'check', warn: true,
+    title: fi ? 'Onko kaikki kunnossa?' : 'Is everything in order?',
+    text: fi ? 'Vahvistan, että olen tarkastanut auton, kuvat on otettu ja auto on ajokunnossa. Mahdolliset vauriot on kirjattu huomioihin.'
+             : 'I confirm that I have inspected the car, the photos are taken and the car is fit to drive. Any damage is written in the notes.',
+    ok: fi ? 'Kaikki kunnossa ✓' : 'All OK ✓', cancel: fi ? 'Peruuta' : 'Cancel'
+  } : {
+    icon: 'flag', warn: true,
+    title: fi ? 'Vahvista luovutus' : 'Confirm the handover',
+    text: fi ? 'Vahvistan, että auto on perillä, kuvat on otettu ja kaikki on kunnossa. Avaimet luovutetaan asiakkaalle.'
+             : 'I confirm the car has arrived, the photos are taken and everything is in order. The keys are handed to the customer.',
+    ok: fi ? 'Vahvistan ✓' : 'Confirm ✓', cancel: fi ? 'Peruuta' : 'Cancel'
+  });
+  if (!ok) return;
   const state = ZemoStore.get();
   const job = state.orders.find(o => o.id === jobId);
-  if (job) job.inspected = true;
+  if (!job) return;
+  job.inspected = true;
+  if (stage === 'pickup') job.pickupDone = true;
   state.inspections.unshift({
     jobId: jobId,
-    stage: currentStage(jobId),
+    stage: stage,
     odo: $('odoInput').value,
     fuel: $('fuelInput').value,
     notes: $('inspectNotes').value || 'OK',
-    photos: Object.assign({}, photos)
+    photos: Object.assign({}, photos),
+    at: new Date().toISOString()
   });
   ZemoStore.save(state);
   clearPhotos();
-  renderAll();
-  showToast(lang === 'fi' ? 'Tarkastusraportti tallennettu.' : 'Inspection report saved.');
-});
+  $('odoInput').value = '';
+  $('inspectNotes').value = '';
+  showToast(fi ? 'Kuvat tallennettu.' : 'Photos saved.');
+  if (stage === 'pickup') beginDrive(jobId);
+  else finishTrip(jobId);
+}
 
 $('profileForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -2736,7 +2995,7 @@ $('langBtn').addEventListener('click', () => {
     html = html.replace(/<\/body>/i, '<script>' + links + '<\/script></body>');
     var f = document.createElement('iframe');
     f.className = 'page';
-    f.allow = 'camera';
+    f.allow = 'camera; geolocation';
     f.title = name;
     f.srcdoc = html;
     document.body.appendChild(f);
