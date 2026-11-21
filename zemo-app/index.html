@@ -1096,6 +1096,10 @@ button{cursor:pointer}
               <label data-fi="Auton merkki ja malli" data-en="Make & Model">Auton merkki ja malli</label>
               <input id="inCar" placeholder="Volvo XC60" required>
             </div>
+            <div class="field">
+              <label data-fi="Puhelinnumero" data-en="Phone Number">Puhelinnumero</label>
+              <input id="inPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+358 40 123 4567" required>
+            </div>
           </div>
           <button class="btn block" type="submit" data-fi="Vahvista tilaus ja siirry seurantaan →" data-en="Confirm Order & Track →">Vahvista tilaus ja siirry seurantaan →</button>
         </form>
@@ -1264,6 +1268,12 @@ $('logoutBtn').addEventListener('click', () => {
 
 document.querySelectorAll('#custNav button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
+// Phone field: start with the customer's saved number (they can change it).
+{
+  const me = (ZemoStore.get().customers || []).find(x => x.name === 'Aino Korhonen');
+  if (me && me.phone) $('inPhone').value = me.phone;
+}
+
 $('orderForm').addEventListener('submit', e => {
   e.preventDefault();
   const state = ZemoStore.get();
@@ -1271,6 +1281,12 @@ $('orderForm').addEventListener('submit', e => {
   const km = Math.max(1, Number($('inKm').value) || 0);
   const total = p.base + (p.rate * km) + p.fee;
   const newId = 'ZS-' + (1043 + state.orders.length);
+  // A phone number the driver can call: 7–15 digits.
+  const phoneDigits = $('inPhone').value.replace(/\D/g, '').length;
+  if (phoneDigits < 7 || phoneDigits > 15) {
+    toast(lang === 'fi' ? 'Tarkista puhelinnumero.' : 'Check the phone number.');
+    return;
+  }
   // The pickup date and time must be in the future.
   if (new Date($('inDate').value + 'T' + $('inTime').value + ':00') <= new Date()) {
     toast(lang === 'fi' ? 'Valitse tuleva päivä ja kellonaika.' : 'Choose a future date and time.');
@@ -1289,6 +1305,7 @@ $('orderForm').addEventListener('submit', e => {
     date: $('inDate').value,
     time: $('inTime').value,
     customer: 'Aino Korhonen',
+    phone: $('inPhone').value.trim(),
     driver: '',
     inspected: false
   });
@@ -1800,7 +1817,8 @@ function renderInspectCustomer(j) {
   const box = $('inspectCustomer'), fi = lang === 'fi';
   if (!j) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  const c = (ZemoStore.get().customers || []).find(x => x.name === j.customer) || { name: j.customer };
+  const c = Object.assign({ name: j.customer }, (ZemoStore.get().customers || []).find(x => x.name === j.customer));
+  if (j.phone) c.phone = j.phone;   // number given in the order
   const rows = [
     [fi ? 'Nimi' : 'Name', c.name],
     [fi ? 'Asiakastyyppi' : 'Customer type', c.type === 'business' ? (fi ? 'Yritys' : 'Business') : c.type === 'private' ? (fi ? 'Yksityinen' : 'Private') : ''],
