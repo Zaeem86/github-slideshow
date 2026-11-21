@@ -1961,7 +1961,17 @@ document.querySelectorAll('.photo-slot').forEach(sl => sl.addEventListener('clic
   openCamera(sl);
 }));
 
+// The phone's own camera app (used when the camera cannot run inside the app).
+function openPhoneCamera(sl) {
+  const inp = sl.querySelector('input');
+  inp.setAttribute('capture', 'environment');
+  inp.click();
+}
+
 async function openCamera(sl) {
+  // No camera access in this browser/page: open the phone camera straight away.
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return openPhoneCamera(sl);
+  const tappedAt = Date.now();
   camSlot = sl;
   camFailed = false;
   $('camTitle').textContent = sl.querySelector('.cap').textContent;
@@ -1972,7 +1982,6 @@ async function openCamera(sl) {
   $('camFile').textContent = lang === 'fi' ? 'Galleria' : 'Gallery';
   $('camShot').disabled = true;
   $('camView').classList.remove('hidden');
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return cameraFailed();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
     if (camSlot !== sl) { stream.getTracks().forEach(t => t.stop()); return; }   // closed while waiting
@@ -1981,7 +1990,11 @@ async function openCamera(sl) {
     await $('camVideo').play().catch(() => {});
     $('camShot').disabled = false;
   } catch (err) {
-    if (camSlot === sl) cameraFailed();
+    if (camSlot !== sl) return;
+    // Camera refused: open the phone camera automatically while the tap still counts
+    // (browsers only allow it shortly after a tap); otherwise show the button.
+    if (Date.now() - tappedAt < 4000) { closeCamera(); openPhoneCamera(sl); }
+    else cameraFailed();
   }
 }
 
