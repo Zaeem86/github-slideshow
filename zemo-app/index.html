@@ -1421,6 +1421,7 @@ button{cursor:pointer}
 .photo-slot.missing svg{color:var(--red)}
 .photo-slot.wide svg{width:auto;height:70px}
 .photo-slot input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.req-label::after{content:' *';color:var(--orange)}
 .photo-slot.req .cap::after{content:' *';color:var(--orange)}
 .photo-slot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .photo-slot.done{border-style:solid;border-color:var(--green)}
@@ -1546,7 +1547,7 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase}
           <p class="sub photo-hint" data-fi="Ota kuvat ohjekuvan mukaisesti. Tähdellä (*) merkityt kuvat ovat pakollisia." data-en="Take the photos as shown in the guide pictures. Photos marked with * are required.">Ota kuvat ohjekuvan mukaisesti. Tähdellä (*) merkityt kuvat ovat pakollisia.</p>
           <label class="photo-slot req wide" data-slot="odometer"><input type="file" accept="image/*" capture="environment"><svg viewBox="0 0 120 72" aria-hidden="true"><path fill="currentColor" d="M22 56A38 38 0 0 1 98 56H88A28 28 0 0 0 32 56Z"/><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M60 22V26M35 31L38 34M85 31L82 34"/><path fill="currentColor" d="M57 57L77 32L80 34.5L63 59Z"/><circle fill="currentColor" cx="60" cy="57" r="6"/><circle fill="#0c1319" cx="60" cy="57" r="2.2"/><rect fill="currentColor" x="42" y="62" width="36" height="8" rx="2"/></svg><span class="cap" data-fi="Kuva matkamittarista" data-en="Photo of the odometer">Kuva matkamittarista</span></label>
           <div class="field" style="margin:12px 0 18px">
-            <label data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
+            <label class="req-label" data-fi="Matkamittarin lukema (km)" data-en="Odometer reading (km)">Matkamittarin lukema (km)</label>
             <input type="number" id="odoInput" placeholder="84250" required>
           </div>
           <div class="photo-grid">
