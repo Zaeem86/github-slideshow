@@ -186,36 +186,14 @@ export async function updateDriverProfile(fd: FormData) {
   return step(fd, async () => {
     if (!validIban(str(fd, "iban"))) throw new Error("Invalid IBAN");
     await rpc("update_driver_profile", { p: { phone: str(fd, "phone"), city: str(fd, "city"), iban: str(fd, "iban") } });
-  }, "Saved");
+  }, "Tallennettu");
 }
 
 export async function acceptJob(fd: FormData) {
   return step(fd, async () => {
     const r = await rpc<{ success: boolean; message: string }>("accept_transfer", { p_order_id: str(fd, "uuid") });
     if (!r?.success) throw new Error(r?.message || "Could not accept the job");
-  }, "Job accepted", "/driver/my-jobs");
-}
-
-export async function rejectJob(fd: FormData) {
-  return step(fd, () => rpc("reject_transfer", { p_order: str(fd, "uuid") }), "Job hidden");
-}
-
-export async function releaseJob(fd: FormData) {
-  return step(fd, () => rpc("release_transfer", { p_order: str(fd, "uuid") }), "Job released");
-}
-
-export async function startDriving(fd: FormData) {
-  return step(fd, () => rpc("start_transfer", { p_order: str(fd, "uuid") }), "Status: in transit – drive safely!");
-}
-
-export async function recordInspection(fd: FormData) {
-  const stage = str(fd, "stage") === "delivery" ? "delivery" : "pickup";
-  const id = str(fd, "id");
-  let payload: unknown;
-  try { payload = JSON.parse(String(fd.get("data") ?? "{}")); } catch { payload = {}; }
-  return step(fd, () => rpc("record_inspection", { p_order: str(fd, "uuid"), p_stage: stage, p: payload }),
-    stage === "pickup" ? "Pickup recorded – drive safely!" : "Delivered – earnings updated",
-    stage === "pickup" ? `/driver/navigation?order=${encodeURIComponent(id)}` : "/driver/earnings");
+  }, "Tehtävä hyväksytty", "/driver/my-jobs");
 }
 
 // ---------------------------------------------------------------- admin

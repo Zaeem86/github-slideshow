@@ -1,33 +1,47 @@
 import type { Metadata } from "next";
-import { updateDriverProfile } from "@/app/actions";
-import { PasswordForm } from "@/components/forms";
+import Link from "next/link";
+import { changePassword, updateDriverProfile } from "@/app/actions";
 import { SubmitButton } from "@/components/client";
-import { DriverBadge, Flash, From } from "@/components/ui";
-import { CITY_NAMES, dt } from "@/lib/domain";
+import { Flash } from "@/components/ui";
+import { CITY_NAMES } from "@/lib/domain";
 import { requireDriver, type SearchParams } from "@/lib/state";
+import { fiDate } from "../common";
 
-export const metadata: Metadata = { title: "Profile" };
+export const metadata: Metadata = { title: "Profiili" };
 const HERE = "/driver/profile";
 
 export default async function Profile({ searchParams }: { searchParams: SearchParams }) {
   const { user: d } = await requireDriver();
   const sp = await searchParams;
-  return <>
+  return <div style={{ maxWidth: 650 }}>
     <Flash sp={sp} />
-    <div className="card"><div className="row"><h1 className="m0">{d.name}</h1><DriverBadge d={d} /></div>
-      <div className="grid mt">
-        <div><div className="muted">Email</div>{d.email}</div>
-        <div><div className="muted">Driving licence</div>{d.licenseNo} (class {d.licenseClass}), valid until {d.licenseExpiry || "–"}</div>
-        <div><div className="muted">Registered</div>{dt(d.createdAt)}</div>
-      </div></div>
-    <form className="card" id="driverProfile" action={updateDriverProfile}><h2>Contact & payout details</h2><From path={HERE} />
-      <div className="grid">
-        <label className="field">Phone<input name="phone" type="tel" required defaultValue={d.phone} /></label>
-        <label className="field">Home city<select name="city" defaultValue={d.city || "Helsinki"}>{CITY_NAMES.map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field">IBAN<input name="iban" required defaultValue={d.iban} /></label>
-      </div>
-      <div className="row mt"><span className="spacer" /><SubmitButton kind="btn-light">Save</SubmitButton></div></form>
-    <PasswordForm from={HERE} />
-  </>;
+    <div className="card">
+      <h2>Kuljettajaprofiili</h2>
+      <p className="sub">Henkilötiedot, ajokortti ja tilitystiedot.</p>
+      <form id="driverProfile" className="fields" action={updateDriverProfile}>
+        <input type="hidden" name="from" value={HERE} />
+        <div className="field"><label htmlFor="pName">Koko nimi</label><input id="pName" value={d.name} readOnly /></div>
+        <div className="field"><label htmlFor="pPhone">Puhelinnumero</label><input id="pPhone" name="phone" type="tel" required defaultValue={d.phone} /></div>
+        <div className="field"><label htmlFor="pCity">Kotikaupunki</label><select id="pCity" name="city" defaultValue={d.city || "Helsinki"}>{CITY_NAMES.map(c => <option key={c}>{c}</option>)}</select></div>
+        <div className="field"><label htmlFor="pIban">IBAN</label><input id="pIban" name="iban" required defaultValue={d.iban} /></div>
+        <div className="field"><label htmlFor="pLic">Ajokorttiluokka</label><input id="pLic" value={`${d.licenseClass || "B"} · voimassa ${d.licenseExpiry ? fiDate(d.licenseExpiry) : "–"}`} readOnly /></div>
+        <div className="field"><label htmlFor="pMail">Sähköposti</label><input id="pMail" value={d.email || ""} readOnly /></div>
+        <div className="field full"><SubmitButton kind="" busy="Tallennetaan…">Tallenna profiili</SubmitButton></div>
+      </form>
+      <Link className="btn outline block" href="/driver/earnings" id="earningsLink">Ansiot →</Link>
+      <details style={{ marginTop: 14 }}>
+        <summary className="btn outline" style={{ width: "100%", listStyle: "none" }}>Vaihda salasana</summary>
+        <form id="passwordForm" className="fields" action={changePassword} style={{ marginTop: 14 }}>
+          <input type="hidden" name="from" value={HERE} />
+          <div className="field"><label htmlFor="pwOld">Nykyinen salasana</label><input id="pwOld" name="current" type="password" required autoComplete="current-password" /></div>
+          <div className="field"><label htmlFor="pwNew">Uusi salasana (väh. 8)</label><input id="pwNew" name="password" type="password" minLength={8} required autoComplete="new-password" /></div>
+          <div className="field full"><SubmitButton kind="" busy="Tallennetaan…">Vaihda salasana</SubmitButton></div>
+        </form>
+      </details>
+      <form action="/auth/signout" method="post">
+        <input type="hidden" name="portal" value="driver" />
+        <button className="btn danger block" id="signOut">Kirjaudu ulos</button>
+      </form>
+    </div>
+  </div>;
 }
-

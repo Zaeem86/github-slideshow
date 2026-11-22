@@ -1,2 +1,2 @@
 import { redirect } from "next/navigation";
-export default function DriverHome() { redirect("/driver/available-jobs"); }
+export default function DriverStart() { redirect("/driver/home"); }

@@ -1,42 +1,45 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { releaseJob, startDriving } from "@/app/actions";
-import { ActionButton, AutoRefresh } from "@/components/client";
-import { Empty, Flash, StatusBadge } from "@/components/ui";
-import { driverPay, dt, eur } from "@/lib/domain";
+import { AutoRefresh } from "@/components/client";
+import { Flash } from "@/components/ui";
 import { requireDriver, type SearchParams } from "@/lib/state";
 import type { Order } from "@/lib/types";
-import { Gate, JobCard, activeJobs } from "../common";
+import { Gate, activeJobs, byTime, isSoon, requestTime, when } from "../common";
 
-export const metadata: Metadata = { title: "My jobs" };
-const HERE = "/driver/my-jobs";
+export const metadata: Metadata = { title: "Omat ajot" };
 
-function Actions({ o }: { o: Order }) {
-  const nav = <Link className="btn btn-light" href={`/driver/navigation?order=${o.id}`}>Navigation</Link>;
-  const insp = (label: string) => <Link className="btn btn-gold" href={`/driver/inspection?order=${o.id}`}>{label}</Link>;
-  if (o.status === "assigned") return <>
-    <ActionButton action={releaseJob} fields={{ uuid: o.uuid }} from={HERE} kind="btn-danger" confirm="Release this job back to other drivers?">Release</ActionButton>
-    <span className="spacer" />{nav}{insp("Pickup inspection")}</>;
-  if (o.status === "picked_up") return <><span className="spacer" />
-    <ActionButton action={startDriving} fields={{ uuid: o.uuid }} from={HERE} kind="btn-light">Start driving</ActionButton>{nav}</>;
-  return <><span className="spacer" />{nav}{insp("Delivery inspection")}</>;
+// One button per step: start the trip → (GPS) → drive → hand over.
+function Step({ o }: { o: Order }) {
+  const map = <Link className="btn outline" href={`/driver/map?order=${o.id}`}>Kartta</Link>;
+  if (o.status === "in_transit") return <>{map}<Link className="btn green" href={`/driver/trip?order=${o.id}`}>Olen perillä</Link></>;
+  if (o.status === "picked_up") return <>{map}<Link className="btn" href={`/driver/map?order=${o.id}`}>Ota GPS käyttöön ja aja</Link></>;
+  return <>{map}<Link className="btn" href={`/driver/trip?order=${o.id}`}>Aloita ajo</Link></>;
 }
+const Pill = ({ o }: { o: Order }) => o.status === "in_transit" ? <span className="pill blue">Ajossa</span>
+  : o.status === "picked_up" ? <span className="pill orange">GPS puuttuu</span> : <span className="pill orange">Odottaa lähtöä</span>;
 
 export default async function MyJobs({ searchParams }: { searchParams: SearchParams }) {
   const { s, user: d } = await requireDriver();
   const sp = await searchParams;
   if (d.status !== "approved") return <><Flash sp={sp} /><Gate d={d} /></>;
-  const active = activeJobs(s, d).reverse();
-  const done = s.orders.filter(o => o.driverId === d.id && o.status === "delivered").reverse();
+  const now = requestTime();
+  const mine = activeJobs(s, d).sort(byTime);
   return <>
     <AutoRefresh />
     <Flash sp={sp} />
-    <div className="card"><h1 className="m0">Active jobs ({active.length})</h1></div>
-    {!active.length ? <Empty action={<Link className="btn btn-gold" href="/driver/available-jobs">Find jobs</Link>}>No active jobs.</Empty>
-      : active.map(o => <JobCard key={o.id} o={o} s={s} extra={<div className="mt"><StatusBadge status={o.status} /></div>}><Actions o={o} /></JobCard>)}
-    {done.length > 0 && <div className="card"><h2>Completed</h2><div className="table-scroll"><table>
-      <thead><tr><th>Order</th><th>Route</th><th>Delivered</th><th>Pay</th></tr></thead>
-      <tbody>{done.map(o => <tr key={o.id}><td>{o.id}</td><td>{o.pickup.city} → {o.dropoff.city}</td><td>{dt(o.history.at(-1)?.at)}</td><td>{eur(driverPay(o, s.settings))}</td></tr>)}</tbody>
-    </table></div></div>}
+    <div className="card">
+      <h2>Omat aktiiviset tehtävät</h2>
+      <p className="sub">Suorita tarkastus ennen ajoa ja merkitse auto toimitetuksi perillä.</p>
+      <div id="myJobsList">
+        {!mine.length ? <p className="empty">Sinulla ei ole aktiivisia tehtäviä.</p> : mine.map(o =>
+          <div className={`job${isSoon(o, now) && o.status === "assigned" ? " soon" : ""}`} key={o.id} data-order={o.id}>
+            <div>
+              <div className="job-route">#{o.id} · {o.pickup.city} → {o.dropoff.city}</div>
+              <div className="job-meta">{o.car.model} ({o.car.plate}) · {o.price.km} km · {when(o)} · <Pill o={o} /></div>
+            </div>
+            <div className="job-actions"><Step o={o} /></div>
+          </div>)}
+      </div>
+    </div>
   </>;
 }

@@ -1,29 +1,29 @@
 "use client";
 // Small interactive pieces. Everything else is rendered on the server.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  AREAS, CITY_NAMES, CONDITIONS, FUEL_LEVELS, NAV, estimateKm, eur, luhn, priceFor, todayFi, type Portal
+  CITY_NAMES, NAV, estimateKm, eur, luhn, priceFor, todayFi, type Portal
 } from "@/lib/domain";
 import type { Order, Settings } from "@/lib/types";
 
 /** Submit button that disables itself while the Server Action runs. */
-export function SubmitButton({ children, kind = "btn-gold", ...rest }: { children: React.ReactNode; kind?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function SubmitButton({ children, kind = "btn-gold", busy = "Please wait…", ...rest }: { children: React.ReactNode; kind?: string; busy?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { pending } = useFormStatus();
-  return <button className={`btn ${kind}`} disabled={pending || rest.disabled} {...rest}>{pending ? "Please wait…" : children}</button>;
+  return <button className={`btn ${kind}`} disabled={pending || rest.disabled} {...rest}>{pending ? busy : children}</button>;
 }
 
 /** A one-button form for a Server Action, with an optional confirmation question. */
-export function ActionButton({ action, fields, confirm: question, children, kind = "btn-light btn-sm", from }: {
+export function ActionButton({ action, fields, confirm: question, children, kind = "btn-light btn-sm", from, busy }: {
   action: (fd: FormData) => Promise<void>; fields: Record<string, string>; confirm?: string;
-  children: React.ReactNode; kind?: string; from: string;
+  children: React.ReactNode; kind?: string; from: string; busy?: string;
 }) {
   return <form action={action} onSubmit={e => { if (question && !window.confirm(question)) e.preventDefault(); }} className="inline">
     {Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
     <input type="hidden" name="from" value={from} />
-    <SubmitButton kind={kind}>{children}</SubmitButton>
+    <SubmitButton kind={kind} busy={busy}>{children}</SubmitButton>
   </form>;
 }
 
@@ -135,42 +135,6 @@ export function PaymentForm({ order, action }: { order: Order; action: (fd: Form
     <p className="notice">Demo mode: payment is simulated. Connect a real provider (e.g. Stripe, Paytrail) before going live.</p>
     <div className="row"><Link className="btn btn-light" href="/customer/dashboard">Pay later</Link><span className="spacer" />
       <SubmitButton>Pay {eur(order.price.total)}</SubmitButton></div>
-  </form>;
-}
-
-/** Pickup / delivery inspection. Photos are listed by file name only (upload to Storage is a later step). */
-export function InspectionForm({ order, stage, action }: { order: Order; stage: "pickup" | "delivery"; action: (fd: FormData) => Promise<void> }) {
-  const prev = order.inspection.pickup;
-  const [areas, setAreas] = useState<Record<string, string>>(() => Object.fromEntries(AREAS.map(a => [a, (stage === "delivery" && prev?.areas[a]) || "OK"])));
-  const [odo, setOdo] = useState(""), [fuel, setFuel] = useState("Full"), [keys, setKeys] = useState("1");
-  const [notes, setNotes] = useState(""), [person, setPerson] = useState(""), [docs, setDocs] = useState(false);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const data = useMemo(() => JSON.stringify({
-    odometer_km: Number(odo), fuel_level: fuel, notes, person_name: person, areas, photo_paths: photos,
-    ...(stage === "pickup" ? { keys_count: Number(keys), documents_present: docs } : {})
-  }), [odo, fuel, notes, person, areas, photos, keys, docs, stage]);
-  return <form id="inspectionForm" className="card" action={action}>
-    <h2>{stage === "pickup" ? "Pickup inspection" : "Delivery inspection"}</h2>
-    <input type="hidden" name="uuid" value={order.uuid} /><input type="hidden" name="id" value={order.id} />
-    <input type="hidden" name="stage" value={stage} /><input type="hidden" name="data" value={data} />
-    <input type="hidden" name="from" value={`/driver/inspection?order=${order.id}`} />
-    <div className="grid">
-      <label className="field">Odometer (km)<input name="odo" type="number" min={0} required value={odo} onChange={e => setOdo(e.target.value)} /></label>
-      <label className="field">Fuel / charge level<select name="fuel" value={fuel} onChange={e => setFuel(e.target.value)}>{FUEL_LEVELS.map(f => <option key={f}>{f}</option>)}</select></label>
-      {stage === "pickup" && <label className="field">Keys received<input name="keys" type="number" min={1} required value={keys} onChange={e => setKeys(e.target.value)} /></label>}
-    </div>
-    <h3>Condition check</h3>
-    <div className="grid">{AREAS.map((a, i) => <label key={a} className="field">
-      <span>{a}{stage === "delivery" && prev && <span className="muted"> (pickup: {prev.areas[a] || "–"})</span>}</span>
-      <select name={`area${i}`} value={areas[a]} onChange={e => setAreas({ ...areas, [a]: e.target.value })}>{CONDITIONS.map(c => <option key={c}>{c}</option>)}</select>
-    </label>)}</div>
-    <label className="field">Damage description / notes<textarea name="notes" maxLength={2000} value={notes} onChange={e => setNotes(e.target.value)} /></label>
-    {/* No `name`: photo files are not uploaded yet, only their names are recorded. */}
-    <label className="field">Photos (all four sides + dashboard)<input type="file" accept="image/*" capture="environment" multiple onChange={e => setPhotos([...(e.target.files || [])].map(f => f.name))} /></label>
-    <label className="field">{stage === "pickup" ? "Car handed over by" : "Car received by"}<input name="person" required maxLength={200} placeholder="Full name" value={person} onChange={e => setPerson(e.target.value)} /></label>
-    {stage === "pickup" && <label className="check"><input type="checkbox" name="docs" checked={docs} onChange={e => setDocs(e.target.checked)} /> Registration document in the car</label>}
-    <label className="check"><input type="checkbox" name="confirm" required /> {stage === "pickup" ? "I have checked the car and the details above are correct" : "The car was handed over and the receiver confirmed its condition"}</label>
-    <div className="row mt"><span className="spacer" /><SubmitButton>{stage === "pickup" ? "Confirm pickup" : "Confirm delivery"}</SubmitButton></div>
   </form>;
 }
 

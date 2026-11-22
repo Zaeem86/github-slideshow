@@ -39,12 +39,11 @@ export const FUEL_LEVELS = ["Full", "3/4", "1/2", "1/4", "Reserve"];
 
 export const NAV: Record<Portal, [string, string][]> = {
   customer: [["dashboard", "Dashboard"], ["create-order", "New transfer"], ["tracking", "Tracking"]],
-  driver: [["available-jobs", "Available jobs"], ["my-jobs", "My jobs"], ["inspection", "Inspection"],
-    ["navigation", "Navigation"], ["earnings", "Earnings"], ["profile", "Profile"]],
+  driver: [["home", "Koti"], ["my-jobs", "Omat ajot"], ["search", "Hae"], ["help", "Help"], ["profile", "Profiili"]],
   admin: [["dashboard", "Dashboard"], ["drivers", "Drivers"], ["customers", "Customers"], ["orders", "Orders"],
     ["pricing", "Pricing"], ["payments", "Payments"], ["settings", "Settings"]]
 };
-export const DEFAULT_PAGE: Record<Portal, string> = { customer: "dashboard", driver: "available-jobs", admin: "dashboard" };
+export const DEFAULT_PAGE: Record<Portal, string> = { customer: "dashboard", driver: "home", admin: "dashboard" };
 export const PORTAL_LABEL: Record<Portal, string> = { customer: "Customer", driver: "Driver", admin: "Admin" };
 
 export const DEFAULT_SETTINGS: Settings = {

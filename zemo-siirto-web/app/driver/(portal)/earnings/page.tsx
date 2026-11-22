@@ -1,38 +1,39 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AutoRefresh } from "@/components/client";
-import { Flash, Stat } from "@/components/ui";
-import { ACTIVE, driverPay, dt, eur, mask } from "@/lib/domain";
+import { Flash } from "@/components/ui";
+import { ACTIVE, eur, mask } from "@/lib/domain";
 import { requireDriver, type SearchParams } from "@/lib/state";
 import type { Order } from "@/lib/types";
+import { fiDate, payOf } from "../common";
 
-export const metadata: Metadata = { title: "Earnings" };
+export const metadata: Metadata = { title: "Ansiot" };
 
 export default async function Earnings({ searchParams }: { searchParams: SearchParams }) {
   const { s, user: d } = await requireDriver();
   const sp = await searchParams;
   const mine = s.orders.filter(o => o.driverId === d.id);
   const done = mine.filter(o => o.status === "delivered");
-  const active = mine.filter(o => ACTIVE.includes(o.status));
-  const sum = (arr: Order[]) => arr.reduce((t, o) => t + driverPay(o, s.settings), 0);
+  const sum = (arr: Order[]) => arr.reduce((t, o) => t + payOf(o, s), 0);
   return <>
     <AutoRefresh />
     <Flash sp={sp} />
-    <div className="card"><h1>Earnings</h1>
-      <div className="stat-grid">
-        <Stat label="Earned" value={eur(sum(done))} />
-        <Stat label="Paid out" value={eur(sum(done.filter(o => o.driverPaidAt)))} />
-        <Stat label="Awaiting payout" value={eur(sum(done.filter(o => !o.driverPaidAt)))} />
-        <Stat label="Pending (active jobs)" value={eur(sum(active))} />
-        <Stat label="Completed jobs" value={done.length} />
-        <Stat label="Kilometres driven" value={done.reduce((t, o) => t + o.price.km, 0)} />
-      </div>
-      <p className="muted">You earn {s.settings.driverShare}% of the transfer price excl. VAT. Payouts go to {mask(d.iban)}.</p>
-      {done.length > 0 && <div className="table-scroll"><table>
-        <thead><tr><th>Order</th><th>Route</th><th>Delivered</th><th>Pay</th><th>Payout</th></tr></thead>
-        <tbody>{[...done].reverse().map(o => <tr key={o.id}><td>{o.id}</td><td>{o.pickup.city} → {o.dropoff.city}</td><td>{dt(o.history.at(-1)?.at)}</td>
-          <td>{eur(driverPay(o, s.settings))}</td>
-          <td>{o.driverPaidAt ? <span className="badge ok">Paid {dt(o.driverPaidAt)}</span> : <span className="badge warn">Pending</span>}</td></tr>)}</tbody>
+    <div className="statgrid">
+      <div className="stat"><b style={{ color: "var(--green)" }}>{eur(sum(done))}</b><span>Ansaittu</span></div>
+      <div className="stat"><b>{eur(sum(done.filter(o => !o.driverPaidAt)))}</b><span>Odottaa tilitystä</span></div>
+      <div className="stat"><b>{eur(sum(mine.filter(o => ACTIVE.includes(o.status))))}</b><span>Aktiiviset tehtävät</span></div>
+    </div>
+    <div className="card">
+      <h2>Tilityshistoria</h2>
+      <p className="sub">Suoritetut kuljetukset ja palkkiot. Saat {s.settings.driverShare} % siirron verottomasta hinnasta. Tilitykset tilille {mask(d.iban)}.</p>
+      {!done.length ? <p className="empty">Ei vielä suoritettuja siirtoja.</p> : <div className="table-scroll"><table>
+        <thead><tr><th>ID</th><th>Reitti</th><th>Toimitettu</th><th>Tila</th><th>Palkkio</th></tr></thead>
+        <tbody>{[...done].reverse().map(o => <tr key={o.id}>
+          <td>#{o.id}</td><td>{o.pickup.city} → {o.dropoff.city}</td><td>{fiDate((o.history.at(-1)?.at || "").slice(0, 10))}</td>
+          <td>{o.driverPaidAt ? <span className="pill green">Maksettu</span> : <span className="pill orange">Odottaa tilitystä</span>}</td>
+          <td><b>{eur(payOf(o, s))}</b></td></tr>)}</tbody>
       </table></div>}
+      <Link className="btn outline block" href="/driver/profile">← Profiili</Link>
     </div>
   </>;
 }

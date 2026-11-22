@@ -88,15 +88,44 @@ select test.ok((public.accept_transfer(:'o1')->>'success')::boolean, 'd2 accepts
 -- ---- inspections + completion
 select test.err(format('select public.start_transfer(%L)', :'o1'), 'pickup inspection first', 'cannot start before pickup');
 select test.err(format('select public.record_inspection(%L, ''delivery'', %L)', :'o1', '{"odometer_km":1,"fuel_level":"Full","person_name":"x"}'), 'pickup first', 'cannot deliver before pickup');
-select public.record_inspection(:'o1', 'pickup', '{"odometer_km":50000,"fuel_level":"Full","keys_count":2,"documents_present":true,"areas":{"Front":"OK","Left side":"Scratch"},"person_name":"Cust One","photo_paths":["a.jpg","b.jpg"]}') \g /dev/null
+-- photos (storage): only the assigned driver may upload, and the five required photos must exist
+reset role; select set_config('request.jwt.claim.sub', :'d1', false) \g /dev/null
+set role authenticated;
+select test.err(format('insert into storage.objects (bucket_id, name) values (''inspection-photos'', %L)', :'o1' || '/pickup/front.jpg'), 'row-level security', 'other driver cannot upload photos to the job');
+reset role; select set_config('request.jwt.claim.sub', :'d2', false) \g /dev/null
+set role authenticated;
+insert into storage.objects (bucket_id, name) select 'inspection-photos', :'o1' || '/pickup/' || x || '.jpg' from unnest(array['odometer','front','right','left']) x;
+select test.err(format('select public.record_inspection(%L, ''pickup'', %L)', :'o1', '{"odometer_km":50000,"fuel_level":"Full"}'), 'photo missing: rear', 'pickup needs all five photos');
+insert into storage.objects (bucket_id, name) values ('inspection-photos', :'o1' || '/pickup/rear.jpg'), ('inspection-photos', :'o1' || '/pickup/extra1.jpg');
+select test.err(format('select public.report_location(%L, 60.17, 24.94)', :'o1'), 'not started', 'no GPS log before the pickup');
+select public.record_inspection(:'o1', 'pickup', '{"odometer_km":50000,"fuel_level":"Full","keys_count":2,"documents_present":true,"areas":{"Front":"OK","Left side":"Scratch"}}') \g /dev/null
+select test.ok((select person_name = '' and array_length(photo_paths, 1) = 6 from inspections where order_id = :'o1' and stage = 'pickup'), 'pickup without a name, six photo paths recorded');
+-- GPS during the trip
+select public.report_location(:'o1', 60.1699, 24.9384, 12) \g /dev/null
+select public.report_location(:'o1', 60.2, 24.9) \g /dev/null
+select test.ok((select (last_position->>'lat')::float = 60.2 from orders where id = :'o1') and (select count(*) = 1 from order_locations where order_id = :'o1'), 'latest position on the order, log max one row per 15 s');
+select test.err(format('select public.report_location(%L, 95, 24)', :'o1'), 'invalid position', 'position is validated');
+select test.err(format('insert into public.order_locations (order_id, driver_id, lat, lng) values (%L, %L, 1, 1)', :'o1', :'d2'), 'permission denied', 'location log is written only by report_location');
 select public.start_transfer(:'o1') \g /dev/null
+reset role; select set_config('request.jwt.claim.sub', :'d1', false) \g /dev/null
+set role authenticated;
+select test.err(format('select public.report_location(%L, 60, 24)', :'o1'), 'not your job', 'other driver cannot report the position');
+select test.ok((select count(*) = 0 from storage.objects where name like :'o1' || '/%'), 'other driver cannot see the photos');
+reset role; select set_config('request.jwt.claim.sub', :'c1', false) \g /dev/null
+set role authenticated;
+select test.ok((select count(*) = 1 from order_locations where order_id = :'o1') and (select count(*) = 6 from storage.objects where name like :'o1' || '/%'), 'customer sees the location log and photos');
+select test.ok((select jsonb_array_length(public.get_driver_news()) = 0), 'customers do not get driver news');
+reset role; select set_config('request.jwt.claim.sub', :'d2', false) \g /dev/null
+set role authenticated;
+select test.ok((select public.get_driver_news()->0->>'title' = 'Tervetuloa ZEMO-kuljettajaksi'), 'drivers get news');
+insert into storage.objects (bucket_id, name) select 'inspection-photos', :'o1' || '/delivery/' || x || '.jpg' from unnest(array['odometer','front','right','left','rear']) x;
 select test.err(format('select public.record_inspection(%L, ''delivery'', %L)', :'o1', '{"odometer_km":49000,"fuel_level":"1/2","person_name":"Sara"}'), 'lower than at pickup', 'odometer cannot go backwards');
 select public.record_inspection(:'o1', 'delivery', '{"odometer_km":50620,"fuel_level":"1/2","areas":{"Front":"Dent"},"person_name":"Sara"}') \g /dev/null
 select test.ok((select status = 'delivered' from orders where id = :'o1'), 'order delivered');
 select test.ok((select status = 'completed' from order_assignments where order_id = :'o1' and driver_id = :'d2'), 'assignment completed');
 select test.ok((select gross_amount_cents = o.price_net_cents and net_amount_cents = round(o.price_net_cents * 0.65) and commission_cents + net_amount_cents = gross_amount_cents
   from driver_earnings e join orders o on o.id = e.order_id where e.order_id = :'o1'), 'earnings booked: 65% driver share');
-select test.ok((select o->'inspection'->'pickup'->'photos' = '["a.jpg","b.jpg"]' and o->'inspection'->'delivery'->'areas'->>'Front' = 'Dent'
+select test.ok((select jsonb_array_length(o->'inspection'->'pickup'->'photos') = 6 and o->'inspection'->'delivery'->'areas'->>'Front' = 'Dent'
   from jsonb_array_elements(public.get_app_state()->'orders') o where o->>'uuid' = :'o1'), 'inspection report in app state');
 select test.ok((select string_agg(h->>'status', ',') = 'pending_payment,open,assigned,open,assigned,picked_up,in_transit,delivered'
   from jsonb_array_elements(public.get_app_state()->'orders') o, jsonb_array_elements(o->'history') h where o->>'uuid' = :'o1'), 'full status history');

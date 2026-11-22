@@ -14,7 +14,9 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 400, height: 860 } });
+  // The driver's trip needs GPS: allow location for the app and give a position in Turku.
+  const ctx = await browser.newContext({ viewport: { width: 400, height: 860 }, permissions: ["geolocation"], geolocation: { latitude: 60.4518, longitude: 22.2666 } });
+  await ctx.route("https://tile.openstreetmap.org/**", r => r.fulfill({ status: 204 }));
   const p = await ctx.newPage();
   const errors = [], posted = [];
   p.on("pageerror", e => errors.push(`${p.url()} ${e.message}`));
@@ -22,6 +24,12 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   p.on("request", r => { if (r.method() === "POST") posted.push(r.postData() || ""); });
   p.on("dialog", d => d.accept());
 
+  // A small JPEG for the inspection photos.
+  const PHOTO = { name: "car.jpg", mimeType: "image/jpeg", buffer: Buffer.from("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCAAwAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwClRRRXUYBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAf/Z", "base64") };
+  async function takePhotos() {
+    for (const slot of ["odometer", "front", "right", "left", "rear"]) await p.setInputFiles(`[data-slot=${slot}] input`, PHOTO);
+    await p.waitForFunction(() => document.querySelectorAll(".photo-slot.done").length === 5, null, { timeout: 20000 });
+  }
   const go = async path => { await p.goto(APP + path); await p.waitForLoadState("networkidle"); };
   const text = async (sel = "main") => ((await p.textContent(sel)) || "").replace(/\s+/g, " ").trim();
   /** Click something that runs a Server Action and wait until it redirects with ?ok= / ?error= (or to `url`). */
@@ -32,7 +40,11 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
     await p.waitForLoadState("networkidle");
   };
   const notice = async kind => (await p.locator(`.notice.${kind}`).count()) ? text(`.notice.${kind}`) : "";
-  async function signOut() { if (await p.locator("#signOut").count()) { await p.click("#signOut"); await p.waitForURL(/\/login/); } }
+  async function signOut() {
+    // The driver app has "Kirjaudu ulos" on the Profiili page.
+    if (!(await p.locator("#signOut").count()) && new URL(p.url()).pathname.startsWith("/driver/") && !p.url().includes("/login")) await go("/driver/profile");
+    if (await p.locator("#signOut").count()) { await p.click("#signOut"); await p.waitForURL(/\/login/); }
+  }
   // Driver start screen: swipe (or Enter on the knob) opens the sign-in.
   async function passSwipe() {
     if (!(await p.locator("#swipeKnob").count())) return;
@@ -109,8 +121,8 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await p.fill(r + "[name=dob]", "1990-01-01"); await p.fill(r + "[name=licenseNo]", "L1"); await p.fill(r + "[name=licenseExpiry]", "2031-01-01");
   await p.fill(r + "[name=iban]", "FI21 1234 5600 0007 85"); await p.fill(r + "[name=password]", PW); await p.check(r + "[name=consent]");
   await act(r + "button.btn-gold", /driver\/profile/);
-  await go("/driver/available-jobs");
-  check((await text("h1")) === "Not available yet", "pending driver cannot see jobs");
+  await go("/driver/search");
+  check(await p.locator("#driverGate").isVisible(), "pending driver cannot see jobs");
 
   await signOut();
   await loginAs("admin", "boss@x.fi");
@@ -118,36 +130,51 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await act("form:has(input[name=status][value=approved]) button");
   check((await text()).includes("Approved"), "admin approved the driver");
 
-  // ---- driver: accept, inspect, navigate, deliver
+  // ---- driver: accept, start the trip with photos, GPS, map, hand over with photos
   await signOut();
   await loginAs("driver", "d1@x.fi");
-  await go("/driver/available-jobs");
+  check(p.url().endsWith("/driver/home") && (await text("#newsCard")).startsWith("Uutiset ja päätökset"), "driver home with the news card");
+  await go("/driver/search");
   check((await text()).includes(orderId), "approved driver sees the job");
   check(!(await text()).includes("Sara"), "open job hides the delivery contact");
-  await act("button:has-text('Accept job')", /my-jobs/);
-  await p.click("a:has-text('Pickup inspection')"); await p.waitForURL(/inspection/); await p.waitForLoadState("networkidle");
-  await p.fill("[name=odo]", "50000"); await p.selectOption("[name=area2]", "Scratch"); await p.fill("[name=person]", "Ali Zemo");
-  await p.check("[name=docs]"); await p.check("[name=confirm]");
-  await act("#inspectionForm button.btn-gold", /navigation/);
-  check((await text("h1")).startsWith("Leg 2"), "navigation: leg 2 after pickup");
-  check((await text()).includes("Sara"), "assigned driver sees the delivery contact");
-  await act("button:has-text('Start driving')");
-  await p.click("a:has-text('delivery inspection')"); await p.waitForURL(/inspection/); await p.waitForLoadState("networkidle");
-  const fillDelivery = async odo => {
-    await p.fill("[name=odo]", odo); await p.selectOption("[name=area0]", "Dent"); await p.fill("[name=person]", "Sara"); await p.check("[name=confirm]");
-  };
-  await fillDelivery("49000");
-  await act("#inspectionForm button.btn-gold");
-  check((await notice("error")) === "Odometer is lower than at pickup", "odometer cannot go backwards (server rule)");
-  await fillDelivery("50620");
-  await act("#inspectionForm button.btn-gold", /earnings/);
+  await act("button:has-text('Hyväksy tehtävä')", /my-jobs/);
+  check((await text("#myJobsList")).includes("Odottaa lähtöä"), "job waits to start");
+  await p.click("#myJobsList a:has-text('Aloita ajo')"); await p.waitForURL(/driver\/trip/); await p.waitForLoadState("networkidle");
+  check((await text("#tripTitle")) === "Aloita ajo" && (await text("#tripCustomer")).includes("Ali Zemo") && (await text("#tripDetails")).includes("Sara"),
+    "trip screen: trip details, customer and contacts");
+  await p.fill("#odoInput", "50000");
+  await p.click("#tripSubmit");
+  check((await text("#toast")).includes("pakolliset kuvat"), "trip cannot start without the photos");
+  await takePhotos();
+  await p.fill("#odoInput", "50000");
+  await p.click("#tripSubmit");
+  await p.waitForSelector("#dlgTitle:has-text('Onko kaikki kunnossa?')");
+  await p.click("#dlgOk");
+  await p.waitForSelector("#dlgTitle:has-text('Ota GPS käyttöön')", { timeout: 20000 });
+  check((await text("#dlgStatus")).includes("GPS pois"), "GPS step: GPS off until turned on");
+  await p.click("#dlgOk");
+  await p.waitForURL(/driver\/map/, { timeout: 20000 }); await p.waitForLoadState("networkidle");
+  await p.waitForSelector("#gpsBadge.on");
+  check((await text("#navTitle")) === "Ajo käynnissä" && (await text("#gpsBadge")) === "GPS päällä", "map opens with GPS on");
+  await p.waitForTimeout(500);
+  await p.click("#arriveBtn"); await p.waitForURL(/driver\/trip/); await p.waitForLoadState("networkidle");
+  check((await text("#tripTitle")) === "Luovutus perillä" && (await p.locator("#pickupReport .log-photos img").count()) === 5, "arrival screen with the saved pickup photos");
+  await takePhotos();
+  await p.fill("#odoInput", "49000");
+  await p.click("#tripSubmit"); await p.click("#dlgOk");
+  await p.waitForSelector("#toast.error");
+  check((await text("#toast")).includes("Odometer is lower than at pickup"), "odometer cannot go backwards (server rule)");
+  await p.fill("#odoInput", "50620");
+  await p.click("#tripSubmit"); await p.click("#dlgOk");
+  await p.waitForURL(/driver\/my-jobs/, { timeout: 20000 }); await p.waitForLoadState("networkidle");
+  check(!(await p.locator("#gpsBadge").count()), "GPS badge gone after the handover");
+  await go("/driver/earnings");
   check((await text(".stat")).includes("414,70"), "earnings 414,70 € (65% of 638,00 €)");
 
   // ---- customer sees the report; second order cancelled
   await signOut();
   await loginAs("customer", "ali@x.fi");
   await go(`/customer/tracking?id=${orderId}`);
-  check((await p.locator(".badge.bad:has-text('New damage')").count()) === 1, "customer sees the new-damage flag");
   check((await text()).includes("Driver One"), "customer sees the driver name");
   await go(`/invoice/${orderId}`);
   check((await text()).includes("INVOICE / LASKU") && (await text()).includes("638,00"), "invoice page");
@@ -182,7 +209,12 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await signOut();
   await loginAs("driver", "d1@x.fi");
   await go("/driver/earnings");
-  check((await p.locator("td .badge.ok").count()) === 1, "driver sees the payout as paid");
+  check((await p.locator("td .pill.green").count()) === 1, "driver sees the payout as paid");
+  for (const path of ["/driver/home", "/driver/my-jobs", "/driver/search", "/driver/help", "/driver/profile", "/driver/earnings"]) {
+    await go(path);
+    const overflow = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+    check(!overflow && (await p.locator("#driverNav a.active").count()) === 1, `${path} renders with the bottom navigation`);
+  }
   await signOut();
   check(p.url().endsWith("/driver/login"), "sign out");
 

@@ -18,6 +18,7 @@
    2. `supabase/migrations/20261117000000_driver_jobs_and_earnings.sql`
    3. `supabase/migrations/20261118000000_app_api.sql`
    4. `supabase/migrations/20261119000000_payments_trustly.sql`
+   5. `supabase/migrations/20261122000000_driver_trip.sql` (صور الفحص في Storage، موقع GPS أثناء الرحلة، أخبار السائقين)
 
    يجب أن تظهر رسالة **Success** بعد كل ملف. إذا ظهر خطأ توقّف وأرسل لي نص الخطأ.
 

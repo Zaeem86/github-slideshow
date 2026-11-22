@@ -41,3 +41,12 @@ export async function requireAdmin(): Promise<{ s: AppState; user: { email: stri
 
 export type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+
+export type DriverNews = { id: string; kind: "news" | "decision"; title: string; body: string; publishedAt: string };
+/** News and decisions for drivers, newest first (RLS: drivers and admins only). */
+export async function getDriverNews(): Promise<DriverNews[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_driver_news");
+  if (error) return [];
+  return (data ?? []) as DriverNews[];
+}
