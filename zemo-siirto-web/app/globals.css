@@ -1,12 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --navy: #101d2b; --navy2: #182b3d; --gold: #d6ad63; --gold-ink: #8a6426; --cream: #f5f3ee; --ink: #18212b;
-  --line: #e5e2da; --muted: #687581; --ok: #1f7a4d; --warn: #9a6a00; --bad: #b42318; --info: #1d5fa8;
+  /* ZEMO colours. ("gold" is the brand accent, now ZEMO orange.) */
+  --navy: #0f171f; --navy2: #19232d; --gold: #f28a45; --gold-ink: #c0601f; --cream: #f5f6f8; --ink: #121a22;
+  --line: #e3e7ec; --muted: #5b6b79; --ok: #1f7a4d; --warn: #9a6a00; --bad: #b42318; --info: #1d5fa8;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--cream); color: var(--ink); font-family: Arial, Helvetica, sans-serif; font-size: 15px; }
+body { margin: 0; background: var(--cream); color: var(--ink); font-family: Inter, system-ui, -apple-system, "Segoe UI", Arial, sans-serif; font-size: 15px; }
 a { text-decoration: none; color: inherit; }
 h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 12px; }
 h2 { font-size: 19px; margin: 0 0 12px; }
@@ -28,32 +29,16 @@ code { background: #f1ede3; padding: 1px 5px; border-radius: 4px; font-size: 13p
 .muted { color: var(--muted); line-height: 1.6; }
 .empty { text-align: center; color: var(--muted); padding: 22px; }
 
-/* ---------- landing ---------- */
-.nav { height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.nav-links { display: flex; gap: 22px; align-items: center; font-size: 14px; }
-.brand { font-weight: 800; letter-spacing: .16em; color: white; white-space: nowrap; }
-.brand span { color: var(--gold); }
-.brand-dark { color: var(--navy2); }
-.hero { background: radial-gradient(circle at 80% 20%, #30465a 0, #172b3d 36%, #101d2b 75%); color: white; min-height: 610px; }
-.hero-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 50px; align-items: center; padding: 70px 0 100px; }
-.eyebrow { color: var(--gold); font-size: 12px; letter-spacing: .22em; font-weight: 700; text-transform: uppercase; }
-.hero h1 { font-size: clamp(42px, 6vw, 70px); line-height: 1.02; letter-spacing: -.045em; margin: 20px 0; }
-.hero p { font-size: 18px; line-height: 1.7; color: #cbd5df; max-width: 590px; }
-.hero .quote { color: var(--ink); }
-.actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
-.section { padding: 80px 0; }
-.section h2 { font-size: 36px; letter-spacing: -.03em; margin: 10px 0 14px; }
-.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 30px; }
-.band { background: #ebe8e0; }
-.band-row, .footer-row { display: flex; justify-content: space-between; gap: 25px; align-items: center; flex-wrap: wrap; }
-.footer { background: var(--navy); color: #dbe2e8; padding: 35px 0; }
-.footer-links { font-size: 13px; } .footer-copy { font-size: 12px; color: #9ba9b5; }
+/* ---------- brand ---------- */
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 900; letter-spacing: .1em; color: white; white-space: nowrap; font-size: 17px; }
+.brand-logo { height: 34px; width: auto; border-radius: 7px; }
+.brand-dark { color: var(--ink); }
 
 /* ---------- buttons ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 8px; padding: 12px 18px;
   font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn-gold { background: var(--gold); color: #172333; }
+.btn-gold { background: var(--gold); color: #17110d; }
 .btn-outline { border: 1px solid #607286; color: white; background: transparent; }
 .btn-light { background: white; color: var(--navy2); border: 1px solid #d7dce0; }
 .btn-danger { background: white; color: var(--bad); border: 1px solid #f0c4bf; }
@@ -82,7 +67,7 @@ code { background: #f1ede3; padding: 1px 5px; border-radius: 4px; font-size: 13p
 .pagenav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
 .pagenav a { flex: none; padding: 7px 12px; border-radius: 999px; color: #cbd5df; font-size: 14px; }
 .pagenav a:hover { color: white; background: var(--navy2); }
-.pagenav a.active { background: var(--gold); color: #172333; font-weight: 700; }
+.pagenav a.active { background: var(--gold); color: #17110d; font-weight: 700; }
 .portal-main { padding-top: 24px; padding-bottom: 60px; }
 .auth-main { padding-top: 40px; padding-bottom: 40px; max-width: 900px; }
 .auth-head { margin-bottom: 18px; }
@@ -94,7 +79,7 @@ code { background: #f1ede3; padding: 1px 5px; border-radius: 4px; font-size: 13p
 .badge.warn { color: var(--warn); border-color: #ecd9a6; background: #fdf8ea; }
 .badge.bad { color: var(--bad); border-color: #f0c4bf; background: #fff5f4; }
 .badge.info { color: var(--info); border-color: #bcd3ee; background: #f3f8fe; }
-.badge.gold { color: #172333; background: var(--gold); border-color: var(--gold); }
+.badge.gold { color: #17110d; background: var(--gold); border-color: var(--gold); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
 .stat { background: #faf8f3; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .stat strong { font-size: 24px; display: block; margin-top: 6px; }
@@ -109,7 +94,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
 .timeline li:last-child::after { display: none; }
 .timeline li.done { color: var(--ink); }
 .timeline li.done::before { background: var(--ok); }
-.timeline li.current::before { background: var(--gold); box-shadow: 0 0 0 4px rgba(214, 173, 99, .3); }
+.timeline li.current::before { background: var(--gold); box-shadow: 0 0 0 4px rgba(242, 138, 69, .3); }
 .todo { margin: 0; padding-left: 18px; } .todo li { margin: 6px 0; } .todo a { color: var(--gold-ink); }
 .big-addr { font-size: 20px; font-weight: 700; margin: 12px 0; }
 .map { width: 100%; height: 320px; border: 0; border-radius: 10px; background: #eee; }
@@ -118,13 +103,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
 .inv-name { font-size: 20px; }
 
 @media (max-width: 760px) {
-  .hero-grid { grid-template-columns: 1fr; padding: 40px 0 60px; }
-  .cards { grid-template-columns: 1fr; }
   .shell { padding-left: 16px; padding-right: 16px; }
-  .hero { min-height: auto; }
-  .nav { height: 70px; }
-  .nav-links a:first-child { display: none; }
-  .section { padding: 50px 0; }
   .card { padding: 16px; }
   .who { display: none; }
 }

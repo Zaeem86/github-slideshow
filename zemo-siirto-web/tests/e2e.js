@@ -33,9 +33,16 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   };
   const notice = async kind => (await p.locator(`.notice.${kind}`).count()) ? text(`.notice.${kind}`) : "";
   async function signOut() { if (await p.locator("#signOut").count()) { await p.click("#signOut"); await p.waitForURL(/\/login/); } }
+  // Driver start screen: swipe (or Enter on the knob) opens the sign-in.
+  async function passSwipe() {
+    if (!(await p.locator("#swipeKnob").count())) return;
+    await p.focus("#swipeKnob"); await p.keyboard.press("Enter");
+    await p.locator("#driverSignIn").waitFor();
+  }
   async function loginAs(portal, email) {
     await go(`/${portal}/login`);
     if (!p.url().includes("/login")) return;
+    await passSwipe();
     const f = { customer: "#customerSignIn", driver: "#driverSignIn", admin: "#adminSignIn" }[portal];
     await p.fill(`${f} [name=email]`, email); await p.fill(`${f} [name=password]`, PW);
     await p.click(`${f} button`);
@@ -59,7 +66,7 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
 
   // ---- landing
   await go("/");
-  await p.selectOption("#quickQuote [name=to]", "Turku");
+  await p.selectOption("#quickQuote [name=to]", "Turku"); await p.click("#quickQuote button[type=submit]");
   check((await text("#quickOut")).includes("173 km"), "landing: instant price Helsinki→Turku 173 km");
 
   // ---- guards
@@ -94,6 +101,9 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   // ---- driver: register, wait for approval
   await signOut();
   await go("/driver/login");
+  check(await p.locator("#swipeKnob").isVisible(), "driver login starts with the swipe screen");
+  await passSwipe();
+  await p.click("#driverApply summary");
   const r = "#driverRegister ";
   await p.fill(r + "[name=name]", "Driver One"); await p.fill(r + "[name=email]", "d1@x.fi"); await p.fill(r + "[name=phone]", "+358 44 1");
   await p.fill(r + "[name=dob]", "1990-01-01"); await p.fill(r + "[name=licenseNo]", "L1"); await p.fill(r + "[name=licenseExpiry]", "2031-01-01");
@@ -161,7 +171,7 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await act("#pricingForm button.btn-gold");
   check((await notice("ok")) === "Pricing saved", "pricing saved");
   await go("/");
-  await p.selectOption("#quickQuote [name=to]", "Turku");
+  await p.selectOption("#quickQuote [name=to]", "Turku"); await p.click("#quickQuote button[type=submit]");
   check((await text("#quickOut")).includes("223,35"), "new pricing used on the landing page (59 + 0,95 × 173)");
   for (const path of ["/admin/dashboard", "/admin/drivers", "/admin/customers", "/admin/orders?status=delivered", `/admin/orders/${orderId}`, "/admin/pricing", "/admin/payments", "/admin/settings"]) {
     await go(path);

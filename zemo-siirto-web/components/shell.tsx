@@ -1,9 +1,12 @@
+import Image from "next/image";
 import Link from "next/link";
 import { PORTAL_LABEL, type Portal } from "@/lib/domain";
 import { NavLinks } from "./client";
 
 export const Brand = ({ dark = false }: { dark?: boolean }) =>
-  <Link href="/" className={`brand ${dark ? "brand-dark" : ""}`}>ZEMO <span>SIIRTO</span></Link>;
+  <Link href="/" className={`brand ${dark ? "brand-dark" : ""}`}>
+    <Image src="/brand/zemo-mark.webp" alt="" width={143} height={96} className="brand-logo" />ZEMO
+  </Link>;
 
 /** Top bar + page navigation for a signed-in portal. */
 export function PortalShell({ portal, name, children }: { portal: Portal; name: string; children: React.ReactNode }) {

@@ -70,18 +70,6 @@ function Quote({ km, s }: { km: number | null; s: Settings }) {
 
 const CityOptions = () => <>{CITY_NAMES.map(c => <option key={c}>{c}</option>)}</>;
 
-export function QuickQuote({ settings }: { settings: Settings }) {
-  const [from, setFrom] = useState("Helsinki"), [to, setTo] = useState("Tampere");
-  return <form className="card quote" id="quickQuote" onSubmit={e => e.preventDefault()}>
-    <div className="eyebrow">INSTANT PRICE</div>
-    <div className="grid mt">
-      <label className="field">From<select name="from" value={from} onChange={e => setFrom(e.target.value)}><CityOptions /></select></label>
-      <label className="field">To<select name="to" value={to} onChange={e => setTo(e.target.value)}><CityOptions /></select></label>
-    </div>
-    <div className="price-box" id="quickOut"><Quote km={estimateKm(from, to, settings)} s={settings} /></div>
-  </form>;
-}
-
 export function OrderForm({ settings, action }: { settings: Settings; action: (fd: FormData) => Promise<void> }) {
   const [from, setFrom] = useState("Helsinki"), [to, setTo] = useState("Tampere");
   const today = todayFi();
