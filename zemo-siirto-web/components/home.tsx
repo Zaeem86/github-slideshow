@@ -24,7 +24,7 @@ const T = {
     order: "Tilaa siirto →", same: "Valitse kaksi eri kaupunkia.",
     addrPh: "Katuosoite ja kaupunki", pickAddr: "Valitse molemmat osoitteet ehdotuslistasta.", busy: "Lasketaan…", drive: "Ajoaika",
     routeNote: "Hinta perustuu todelliseen ajomatkaan teitä pitkin. Lopullinen hinta vahvistetaan tilauksessa.",
-    s1: "Valitse kaupungit", s1t: "Kerro, mistä auto noudetaan ja minne se viedään.",
+    s1: "Valitse kaupungit", s1t: "Kerro, mistä auto noudetaan ja minne se viedään.", s1g: "Syötä osoitteet",
     s2: "Saat hinta-arvion heti", s2t: "Näet hinnan ennen tilausta, ilman yllätyksiä.",
     s3: "Tilaa – me hoidamme loput", s3t: "Seuraa siirtoa noudosta luovutukseen.",
     trust: "Digitaalinen tarkastus noudossa ja luovutuksessa",
@@ -54,7 +54,7 @@ const T = {
     order: "Order a transfer →", same: "Choose two different cities.",
     addrPh: "Street address and city", pickAddr: "Choose both addresses from the suggestions.", busy: "Calculating…", drive: "Driving time",
     routeNote: "The price is based on the real driving distance by road. The final price is confirmed in the order.",
-    s1: "Choose the cities", s1t: "Tell us where the car is picked up and where it goes.",
+    s1: "Choose the cities", s1t: "Tell us where the car is picked up and where it goes.", s1g: "Enter the addresses",
     s2: "Get an instant estimate", s2t: "See the price before you order, with no surprises.",
     s3: "Order – we handle the rest", s3t: "Follow the transfer from pickup to delivery.",
     trust: "Digital inspection at pickup and delivery",
@@ -200,7 +200,7 @@ export function HomeView({ settings, google }: { settings: Settings; google: boo
         </form>}
 
         <div className="home-steps">
-          {[[t.s1, t.s1t], [t.s2, t.s2t], [t.s3, t.s3t]].map(([h, p], i) =>
+          {[[google ? t.s1g : t.s1, t.s1t], [t.s2, t.s2t], [t.s3, t.s3t]].map(([h, p], i) =>
             <div className="home-step" key={h}><div className="num">{i + 1}</div><div><b>{h}</b><span>{p}</span></div></div>)}
         </div>
 
