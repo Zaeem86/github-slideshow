@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs both browser end-to-end tests against the real SQL migrations:
-# throwaway Postgres → Supabase stand-in → mock Trustly → production build of the app → Playwright.
+# throwaway Postgres → Supabase stand-in → mock Trustly + mock Google Maps → production build of the app → Playwright.
 #
 #   bash tests/run_e2e.sh
 #
@@ -12,6 +12,8 @@ cd "$(dirname "$0")/.."
 TMP="$(mktemp -d)"
 PIDS=()
 cleanup() {
+  # The app runs in its own process group (setsid), so its child next-server stops too.
+  if [ -n "${NEXT_PID:-}" ]; then kill -- "-$NEXT_PID" 2>/dev/null || true; fi
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
   if [ -n "${OWN_PG:-}" ]; then "$PGBIN/pg_ctl" -D "$TMP/pg" stop -m fast >/dev/null 2>&1 || true; fi
   rm -rf "$TMP"
@@ -46,16 +48,19 @@ reset_data() {
 }
 
 start_supabase
+node tests/mocks/fake-google/server.js 8792 test-google-key > "$TMP/google.log" 2>&1 &
+PIDS+=($!)
 node tests/mocks/fake-trustly/server.js 8791 "$TMP/merchant.pub" "$TMP/trustly.key" zemo-test test-pass > "$TMP/trustly.log" 2>&1 &
 PIDS+=($!)
 
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:8790 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=anon npx next build > "$TMP/build.log" 2>&1 \
   || { tail -40 "$TMP/build.log"; exit 1; }
-SUPABASE_SERVICE_ROLE_KEY=service-secret APP_URL=http://localhost:3100 TRUSTLY_ENV=test \
+GOOGLE_MAPS_SERVER_KEY=test-google-key GOOGLE_PLACES_URL=http://localhost:8792 GOOGLE_ROUTES_URL=http://localhost:8792 \
+  SUPABASE_SERVICE_ROLE_KEY=service-secret APP_URL=http://localhost:3100 TRUSTLY_ENV=test \
   TRUSTLY_API_URL=http://localhost:8791/api/1 TRUSTLY_USERNAME=zemo-test TRUSTLY_PASSWORD=test-pass \
   TRUSTLY_PRIVATE_KEY="$(cat "$TMP/merchant.key")" TRUSTLY_PUBLIC_KEY="$(cat "$TMP/trustly.pub")" \
-  npx next start -p 3100 > "$TMP/next.log" 2>&1 &
-PIDS+=($!)
+  setsid npx next start -p 3100 > "$TMP/next.log" 2>&1 &
+NEXT_PID=$!; PIDS+=("$NEXT_PID")
 for _ in $(seq 1 30); do curl -sf http://localhost:3100/api/health >/dev/null 2>&1 && break; sleep 1; done
 curl -s http://localhost:3100/api/health; echo
 

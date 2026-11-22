@@ -11,6 +11,7 @@ import { DEFAULT_PAGE, todayFi, validIban, yearsSince, type Portal } from "@/lib
 import type { AppState } from "@/lib/types";
 import { amountString, trustlyCall, trustlyConfig, trustlyEnabled } from "@/lib/trustly";
 import { serviceRpc } from "@/lib/supabase/service";
+import { googleEnabled } from "@/lib/google";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const PORTALS: Portal[] = ["customer", "driver", "admin"];
@@ -117,12 +118,13 @@ export async function updateMyProfile(fd: FormData) {
 }
 
 export async function createOrder(fd: FormData) {
+  if (googleEnabled() && !str(fd, "quoteId")) redirect(withMsg("/customer/create-order", "error", "Choose both addresses from the suggestions to get the price"));
   const { data, error } = await attempt(() => rpc<{ id: string }>("create_order", { p: {
     pickup_city: str(fd, "fromCity"), pickup_address: str(fd, "fromAddr"), pickup_date: str(fd, "date"),
     pickup_time: str(fd, "time"), pickup_contact: str(fd, "fromContact"),
     dropoff_city: str(fd, "toCity"), dropoff_address: str(fd, "toAddr"), dropoff_contact: str(fd, "toContact"),
     car_model: str(fd, "car"), car_plate: str(fd, "plate").toUpperCase(), gearbox: str(fd, "gearbox"), fuel: str(fd, "fuel"),
-    notes: str(fd, "notes")
+    notes: str(fd, "notes"), quote_id: str(fd, "quoteId")
   } }));
   if (error || !data) redirect(withMsg("/customer/create-order", "error", error || "Could not create the order"));
   revalidatePath("/", "layout");

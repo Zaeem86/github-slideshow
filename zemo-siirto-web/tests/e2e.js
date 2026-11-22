@@ -68,9 +68,18 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
     await p.fill(r + "[name=password]", PW);
     await act(r + "button", /create-order/);
   }
+  /** Address field with Google suggestions: type, then pick the first suggestion. */
+  async function pickAddress(id, query) {
+    await p.fill(`#${id}`, query);
+    await p.click(`#${id}-list li >> nth=0`);
+  }
+  async function routeOrder(toQuery) {
+    await pickAddress("fromAddr", "Mannerheim"); await pickAddress("toAddr", toQuery);
+    await p.waitForFunction(() => document.querySelector("[name=quoteId]")?.value, null, { timeout: 15000 });
+  }
   async function newOrder(to, contact) {
     await go("/customer/create-order");
-    await p.fill("[name=fromAddr]", "Mannerheimintie 1"); await p.selectOption("[name=toCity]", to); await p.fill("[name=toAddr]", "Kauppurienkatu 2");
+    await routeOrder({ Oulu: "Kauppurien", Turku: "Aurakatu" }[to]);
     if (contact) await p.fill("[name=toContact]", contact);
     await p.fill("[name=car]", "Volvo V60"); await p.fill("[name=plate]", "abc-123");
     await act("#orderForm button", /\/customer\/pay\//);
@@ -78,8 +87,11 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
 
   // ---- landing
   await go("/");
-  await p.selectOption("#quickQuote [name=to]", "Turku"); await p.click("#quickQuote button[type=submit]");
-  check((await text("#quickOut")).includes("173 km"), "landing: instant price Helsinki→Turku 173 km");
+  await pickAddress("qFrom", "Mannerheim"); await pickAddress("qTo", "Aurakatu");
+  await p.click("#quickQuote button[type=submit]"); await p.waitForSelector("#quickOut");
+  check((await text("#quickOut")).includes("Helsinki → Turku") && (await text("#quickOut")).includes("173 km") && (await text("#quickOut")).includes("Ajoaika"),
+    "landing: address search + road route price Helsinki→Turku 173 km with driving time");
+  await p.click("#quickOut a"); await p.waitForURL(/customer\/login|create-order/);
 
   // ---- guards
   await go("/admin/orders");
@@ -140,7 +152,7 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await act("button:has-text('Hyväksy tehtävä')", /my-jobs/);
   check((await text("#myJobsList")).includes("Odottaa lähtöä"), "job waits to start");
   await p.click("#myJobsList a:has-text('Aloita ajo')"); await p.waitForURL(/driver\/trip/); await p.waitForLoadState("networkidle");
-  check((await text("#tripTitle")) === "Aloita ajo" && (await text("#tripCustomer")).includes("Ali Zemo") && (await text("#tripDetails")).includes("Sara"),
+  check((await text("#tripTitle")) === "Aloita ajo" && (await text("#tripCustomer")).includes("Ali Zemo") && (await text("#tripDetails")).includes("Sara") && (await text("#tripDetails")).includes("Ajoaika"),
     "trip screen: trip details, customer and contacts");
   await p.fill("#odoInput", "50000");
   await p.click("#tripSubmit");
@@ -198,7 +210,8 @@ const check = (cond, name) => { console.log((cond ? "PASS " : "FAIL ") + name); 
   await act("#pricingForm button.btn-gold");
   check((await notice("ok")) === "Pricing saved", "pricing saved");
   await go("/");
-  await p.selectOption("#quickQuote [name=to]", "Turku"); await p.click("#quickQuote button[type=submit]");
+  await pickAddress("qFrom", "Mannerheim"); await pickAddress("qTo", "Aurakatu");
+  await p.click("#quickQuote button[type=submit]"); await p.waitForSelector("#quickOut");
   check((await text("#quickOut")).includes("223,35"), "new pricing used on the landing page (59 + 0,95 × 173)");
   for (const path of ["/admin/dashboard", "/admin/drivers", "/admin/customers", "/admin/orders?status=delivered", `/admin/orders/${orderId}`, "/admin/pricing", "/admin/payments", "/admin/settings"]) {
     await go(path);

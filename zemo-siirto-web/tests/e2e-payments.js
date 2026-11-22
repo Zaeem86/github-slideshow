@@ -36,7 +36,9 @@ const trustlyLog = async () => (await fetch(`${TR}/test/log`)).json();
 
   // ---- customer orders and goes to the bank
   await register("Ali Zemo", "ali@x.fi");
-  await p.fill("[name=fromAddr]", "Mannerheimintie 1"); await p.selectOption("[name=toCity]", "Oulu"); await p.fill("[name=toAddr]", "Kauppurienkatu 2");
+  // Address fields with Google suggestions (mock): pick the first suggestion, then wait for the road route quote.
+  for (const [id, q] of [["fromAddr", "Mannerheim"], ["toAddr", "Kauppurien"]]) { await p.fill(`#${id}`, q); await p.click(`#${id}-list li >> nth=0`); }
+  await p.waitForFunction(() => document.querySelector("[name=quoteId]")?.value, null, { timeout: 15000 });
   await p.fill("[name=car]", "Volvo V60"); await p.fill("[name=plate]", "abc-123");
   await p.click("#orderForm button"); await p.waitForURL(/\/customer\/pay\//); await p.waitForLoadState("networkidle");
   const orderId = decodeURIComponent(p.url().split("/pay/")[1]);

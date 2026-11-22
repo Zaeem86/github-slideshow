@@ -8,7 +8,7 @@ import { GUIDE_EXTRA, GUIDE_FRONT, GUIDE_ODOMETER, GUIDE_REAR, guideSide } from 
 export type TripOrder = {
   uuid: string; id: string; stage: "pickup" | "delivery";
   from: string; to: string; fromAddr: string; toAddr: string; fromContact: string; toContact: string;
-  when: string; car: string; km: number; pay: string; inspected: boolean;
+  when: string; car: string; km: number; minutes: number | null; pay: string; inspected: boolean;
   customer: { name: string; company: string; phone: string; email: string };
 };
 
@@ -181,7 +181,8 @@ export function TripScreen({ o }: { o: TripOrder }) {
       <div className="job-route">#{o.id} · {o.from} → {o.to}</div>
       {([["Noutopaikka", `${o.fromAddr}, ${o.from}`], ["Yhteyshenkilö noudossa", o.fromContact], ["Toimituspaikka", `${o.toAddr}, ${o.to}`],
         ["Yhteyshenkilö perillä", o.toContact], ["Noutoaika", o.when], ["Auto", o.car],
-        ["Matka", `${o.km} km`], ["Palkkiosi", o.pay]] as [string, string][]).filter(r => r[1]).map(([k, v]) =>
+        ["Matka", `${o.km} km`], ["Ajoaika", o.minutes ? `≈ ${o.minutes >= 60 ? `${Math.floor(o.minutes / 60)} h ${o.minutes % 60} min` : `${o.minutes} min`}` : ""],
+        ["Palkkiosi", o.pay]] as [string, string][]).filter(r => r[1]).map(([k, v]) =>
         <div className="trip-row" key={k}><span>{k}</span><b>{v}</b></div>)}
       <div className="trip-row"><span>Tarkastus</span><b><span className={`pill ${o.inspected ? "green" : "orange"}`}>{o.inspected ? "Tarkastettu" : "Odottaa tarkastusta"}</span></b></div>
     </div>

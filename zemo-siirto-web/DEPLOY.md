@@ -19,6 +19,7 @@
    3. `supabase/migrations/20261118000000_app_api.sql`
    4. `supabase/migrations/20261119000000_payments_trustly.sql`
    5. `supabase/migrations/20261122000000_driver_trip.sql` (صور الفحص في Storage، موقع GPS أثناء الرحلة، أخبار السائقين)
+   6. `supabase/migrations/20261123000000_google_routes.sql` (العناوين والمسافة الحقيقية عبر الطرق من Google Maps)
 
    يجب أن تظهر رسالة **Success** بعد كل ملف. إذا ظهر خطأ توقّف وأرسل لي نص الخطأ.
 
@@ -62,6 +63,17 @@
    - `serviceKeyConfigured` / `appUrlConfigured` ← المتغيرات في الجدول أعلاه.
 
 > بعد أي تغيير في المتغيرات: **Deployments ← ⋯ ← Redeploy** حتى تُطبَّق.
+
+## الخطوة 3.5: Google Maps (العناوين، المسافة الحقيقية، الخرائط)
+
+بدون هذه الخطوة يعمل الموقع بأسعار حسب المدن وخريطة OpenStreetMap. مع Google: بحث عن العنوان أثناء الكتابة، والسعر من المسافة الحقيقية عبر الطرق، ووقت الرحلة، والمسار على خريطة Google.
+
+1. ادخل إلى <https://console.cloud.google.com> وأنشئ مشروعاً (مثلاً `zemo`)، وفعّل الفوترة (Billing). Google يعطي استخداماً مجانياً شهرياً؛ ضع **تنبيه ميزانية** من Billing ← Budgets & alerts.
+2. **APIs & Services ← Library** وفعّل: **Places API (New)** و **Routes API** و **Maps JavaScript API**.
+3. **APIs & Services ← Credentials ← Create credentials ← API key** مرتين:
+   - **مفتاح الخادم:** API restrictions ← Places API (New) + Routes API فقط. ضعه في Vercel باسم `GOOGLE_MAPS_SERVER_KEY` (فعّل **Sensitive**). لا يوضع أبداً في متغير يبدأ بـ `NEXT_PUBLIC_`.
+   - **مفتاح المتصفح (للخريطة فقط):** Application restrictions ← Websites: `https://zemosiirto.fi/*` و `https://*.vercel.app/*`، و API restrictions ← Maps JavaScript API فقط. ضعه باسم `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY`.
+4. Redeploy، ثم جرّب في الصفحة الرئيسية: اكتب عنواناً، اختر من الاقتراحات، واضغط **Laske hinta**.
 
 ## الخطوة 4: ربط النطاق zemosiirto.fi
 

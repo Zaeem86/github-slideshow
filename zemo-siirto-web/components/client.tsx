@@ -8,6 +8,44 @@ import {
   CITY_NAMES, NAV, estimateKm, eur, luhn, priceFor, todayFi, type Portal
 } from "@/lib/domain";
 import type { Order, Settings } from "@/lib/types";
+import { quoteRoute } from "@/app/route-actions";
+import { AddressInput, newSession } from "./address";
+
+export type InitialQuote = { id: string; from: string; to: string; km: number; minutes: number; total: number };
+type ShownQuote = { id: string; km: number; minutes: number; total: number; net?: number; vat?: number; vatRate?: number };
+
+/** Pickup + delivery address with the road route price from Google (Server Action → route quote). */
+function RouteFields({ initial }: { initial?: InitialQuote | null }) {
+  const [session] = useState(() => newSession());
+  const [a, setA] = useState<{ placeId: string; text: string } | null>(initial ? { placeId: "", text: initial.from } : null);
+  const [b, setB] = useState<{ placeId: string; text: string } | null>(initial ? { placeId: "", text: initial.to } : null);
+  const [q, setQ] = useState<ShownQuote | null>(initial ?? null);
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  async function recalc(na: typeof a, nb: typeof b) {
+    setQ(null); setErr("");
+    if (!na?.placeId || !nb?.placeId) return;
+    setBusy(true);
+    const r = await quoteRoute(na.placeId, nb.placeId, session);
+    setBusy(false);
+    if (r.ok) setQ(r.quote); else setErr(r.error);
+  }
+  return <>
+    <h3>Pickup</h3>
+    <label className="field">Address<AddressInput id="fromAddr" session={session} value={a} required placeholder="Street address and city"
+      onPick={p => { setA(p); void recalc(p, b); }} /></label>
+    <h3>Delivery</h3>
+    <label className="field">Address<AddressInput id="toAddr" session={session} value={b} required placeholder="Street address and city"
+      onPick={p => { setB(p); void recalc(a, p); }} /></label>
+    <input type="hidden" name="quoteId" value={q?.id ?? ""} />
+    <h3>Price (real driving distance by road)</h3>
+    <div className="price-box" id="quoteBox">{busy ? <span className="muted">Calculating…</span>
+      : q ? <div className="row"><div>
+          <div className="muted">Road distance: <b>{q.km} km</b> · driving time ≈ {q.minutes >= 60 ? `${Math.floor(q.minutes / 60)} h ${q.minutes % 60} min` : `${q.minutes} min`}</div>
+          {q.net != null && <div className="muted">Excl. VAT {eur(q.net)} + VAT {q.vatRate}% {eur(q.vat)}</div>}
+        </div><span className="spacer" /><div className="total">{eur(q.total)}</div></div>
+      : <span className="muted">{err || "Choose both addresses from the suggestions to see the price."}</span>}</div>
+  </>;
+}
 
 /** Submit button that disables itself while the Server Action runs. */
 export function SubmitButton({ children, kind = "btn-gold", busy = "Please wait…", ...rest }: { children: React.ReactNode; kind?: string; busy?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
@@ -70,9 +108,22 @@ function Quote({ km, s }: { km: number | null; s: Settings }) {
 
 const CityOptions = () => <>{CITY_NAMES.map(c => <option key={c}>{c}</option>)}</>;
 
-export function OrderForm({ settings, action }: { settings: Settings; action: (fd: FormData) => Promise<void> }) {
+export function OrderForm({ settings, action, google = false, initial }: { settings: Settings; action: (fd: FormData) => Promise<void>; google?: boolean; initial?: InitialQuote | null }) {
   const [from, setFrom] = useState("Helsinki"), [to, setTo] = useState("Tampere");
   const today = todayFi();
+  if (google) return <form action={action} className="card" id="orderForm">
+    <h2>Create a car transfer request</h2>
+    <RouteFields initial={initial} />
+    <h3>Pickup time and contacts</h3>
+    <div className="grid">
+      <label className="field">Date<input name="date" type="date" min={today} defaultValue={today} required /></label>
+      <label className="field">Time<input name="time" type="time" defaultValue="09:00" required /></label>
+      <label className="field">Contact at pickup (optional)<input name="fromContact" maxLength={200} placeholder="Name, phone" /></label>
+      <label className="field">Contact at delivery (optional)<input name="toContact" maxLength={200} placeholder="Name, phone" /></label>
+    </div>
+    <VehicleFields />
+    <div className="row mt"><span className="spacer" /><SubmitButton>Continue to payment</SubmitButton></div>
+  </form>;
   return <form action={action} className="card" id="orderForm">
     <h2>Create a car transfer request</h2>
     <h3>Pickup</h3>
@@ -89,6 +140,15 @@ export function OrderForm({ settings, action }: { settings: Settings; action: (f
       <label className="field">Address<input name="toAddr" required maxLength={200} placeholder="Street, postcode" /></label>
       <label className="field">Contact at delivery (optional)<input name="toContact" maxLength={200} placeholder="Name, phone" /></label>
     </div>
+    <VehicleFields />
+    <h3>Price (calculated from the distance)</h3>
+    <div className="price-box" id="quoteBox"><Quote km={estimateKm(from, to, settings)} s={settings} /></div>
+    <div className="row mt"><span className="spacer" /><SubmitButton>Continue to payment</SubmitButton></div>
+  </form>;
+}
+
+function VehicleFields() {
+  return <>
     <h3>Vehicle</h3>
     <div className="grid">
       <label className="field">Make & model<input name="car" required maxLength={100} placeholder="e.g. Volvo V60" /></label>
@@ -97,10 +157,7 @@ export function OrderForm({ settings, action }: { settings: Settings; action: (f
       <label className="field">Fuel / power<select name="fuel"><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
     </div>
     <label className="field">Notes for the driver<textarea name="notes" maxLength={2000} placeholder="Key handover, parking, special instructions…" /></label>
-    <h3>Price (calculated from the distance)</h3>
-    <div className="price-box" id="quoteBox"><Quote km={estimateKm(from, to, settings)} s={settings} /></div>
-    <div className="row mt"><span className="spacer" /><SubmitButton>Continue to payment</SubmitButton></div>
-  </form>;
+  </>;
 }
 
 /** DEMO payment form. The card number is checked here and never sent to the server – only the last 4 digits. */

@@ -201,6 +201,24 @@ select test.ok((select o.refunded_at is not null and p.status = 'refunded' from 
 select test.err(format('select public.complete_refund(%L)', :'pay1'), 'not refundable', 'cannot refund twice');
 select test.ok(public.record_payment_event('trustly', 'n9', 'credit', 'no-such-payment', 'T-0', 100, 'EUR', '{}') = 'unknown_payment', 'notification for unknown payment is logged, not applied');
 
+-- ---- Google route quotes: saved by the app server, used by create_order
+reset role; set role service_role;
+select (public.save_route_quote('{"from_address":"Mannerheimintie 1, 00100 Helsinki","from_city":"Helsinki","from_lat":60.1699,"from_lng":24.9384,"to_address":"Hämeenkatu 1, 33100 Tampere","to_city":"Tampere","to_lat":61.4978,"to_lng":23.761,"distance_m":178400,"duration_s":7260,"polyline":"abc"}')->>'id') as rq \gset
+reset role; set role authenticated; select set_config('request.jwt.claim.sub', :'c1', false) \g /dev/null
+select test.err('select public.save_route_quote(''{}'')', 'permission denied', 'customers cannot save route quotes');
+select test.err('select count(*) from public.route_quotes', 'permission denied', 'customers cannot read route quotes');
+select (public.create_order(jsonb_build_object('quote_id', :'rq', 'pickup_date', to_char(now() + interval '2 days', 'YYYY-MM-DD'), 'pickup_time', '10:00',
+  'pickup_city', 'Oulu', 'pickup_address', 'fake', 'car_model', 'Kia', 'car_plate', 'kia-1'))->>'uuid') as oq \gset
+select test.ok((select distance_km = 179 and pickup_city = 'Helsinki' and pickup_address like 'Mannerheimintie%' and dropoff_city = 'Tampere'
+  and drive_minutes = 121 and pickup_lat = 60.1699 and route_polyline = 'abc'
+  and price_net_cents = (select base_fee_cents + per_km_cents * 179 from app_settings) from orders where id = :'oq'),
+  'order from a route quote: real distance, addresses and coordinates from the server, not the client');
+select test.ok((select o->'route'->>'minutes' = '121' from jsonb_array_elements(public.get_app_state()->'orders') o where o->>'uuid' = :'oq'), 'route in app state');
+reset role; update route_quotes set expires_at = now() - interval '1 minute' where id = :'rq';
+set role authenticated;
+select test.err(format('select public.create_order(%L)', jsonb_build_object('quote_id', :'rq', 'pickup_date', to_char(now() + interval '2 days', 'YYYY-MM-DD'), 'car_model', 'Kia', 'car_plate', 'k')), 'expired', 'expired quote is refused');
+select test.err(format('select public.create_order(%L)', jsonb_build_object('quote_id', 'nope', 'pickup_date', to_char(now() + interval '2 days', 'YYYY-MM-DD'), 'car_model', 'Kia', 'car_plate', 'k')), 'invalid price quote', 'bad quote id is refused');
+
 -- ---- anon
 reset role; select set_config('request.jwt.claim.sub', '', false) \g /dev/null
 set role anon;

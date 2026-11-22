@@ -24,7 +24,7 @@ export default async function Trip({ searchParams }: { searchParams: SearchParam
     <TripScreen key={`${o.id}-${stage}`} o={{
       uuid: o.uuid, id: o.id, stage, from: o.pickup.city, to: o.dropoff.city, fromAddr: o.pickup.address, toAddr: o.dropoff.address,
       fromContact: o.pickup.contact, toContact: o.dropoff.contact,
-      when: when(o), car: `${o.car.model} (${o.car.plate})`, km: o.price.km, pay: eur(payOf(o, s)), inspected: !!saved,
+      when: when(o), car: `${o.car.model} (${o.car.plate})`, km: o.price.km, minutes: o.route?.minutes ?? null, pay: eur(payOf(o, s)), inspected: !!saved,
       customer: { name: o.customer.name, company: o.customer.company, phone: o.customer.phone, email: o.customer.email }
     }} />
     <div className="card">

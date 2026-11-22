@@ -38,7 +38,11 @@
 .home-calc { text-align: left; max-width: 560px; margin: 0 auto; }
 .home-calc label { display: block; font-weight: 800; font-size: 14px; margin: 14px 0 8px; }
 .home-calc select { width: 100%; padding: 15px 16px; border: 1px solid var(--h-line); border-radius: 12px; background: var(--h-field); color: var(--h-ink); font: inherit; font-size: 15px; }
-.home-calc select:focus { outline: 2px solid var(--h-orange); border-color: transparent; }
+.home-calc select:focus, .home-calc .home-input:focus { outline: 2px solid var(--h-orange); border-color: transparent; }
+.home-calc .home-input { width: 100%; padding: 15px 16px; border: 1px solid var(--h-line); border-radius: 12px; background: var(--h-field); color: var(--h-ink); font: inherit; font-size: 15px; }
+.home-calc .home-input::placeholder { color: var(--h-muted); }
+.home-btn:disabled { opacity: .6; cursor: wait; }
+.calc-error { color: #d64545; }
 .home-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--h-orange); color: var(--h-on-orange) !important; border: 0; border-radius: 12px; padding: 14px 22px; font: inherit; font-weight: 800; cursor: pointer; }
 .home-btn:hover { background: var(--h-orange-dark); }
 .home-btn.block { width: 100%; margin-top: 18px; }

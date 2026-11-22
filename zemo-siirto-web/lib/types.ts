@@ -31,6 +31,9 @@ export type Order = {
   paymentStatus?: string | null;
   refundedAt: string | null;
   driverPaidAt: string | null;
+  /** Road route from Google Maps (null values for orders priced by city). */
+  route?: { fromLat: number | null; fromLng: number | null; toLat: number | null; toLng: number | null; minutes: number | null; polyline: string | null };
+  lastPosition?: { lat: number; lng: number; at: string } | null;
 };
 
 export type DriverStatus = "pending" | "approved" | "rejected" | "suspended";
