@@ -1,0 +1,56 @@
+/* Driver start: swipe screen and sign-in (dark ZEMO look). */
+.ds-page { min-height: 100vh; background: #080c10; color: #f4f7fa; font: 15px/1.5 Inter, system-ui, -apple-system, Arial, sans-serif; }
+
+.ds-splash { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 48px 24px 54px;
+  background: radial-gradient(circle at 50% 42%, rgba(242,138,69,.14) 0%, transparent 55%), radial-gradient(ellipse at 80% 15%, #16202a 0%, #070a0e 70%);
+  user-select: none; }
+
+.ds-logo { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ds-emblem { width: min(270px, 72vw); height: auto; filter: drop-shadow(0 0 22px rgba(242,138,69,.35));
+  -webkit-mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 70%, transparent 100%);
+  mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 70%, transparent 100%); }
+.ds-word { font-size: clamp(44px, 11vw, 58px); font-weight: 900; letter-spacing: -.03em; color: #fff; margin-top: 10px; line-height: 1; }
+.ds-logo.small { margin-bottom: 30px; }
+.ds-logo.small .ds-emblem { width: 155px; }
+.ds-logo.small .ds-word { font-size: 36px; margin-top: 6px; }
+
+.ds-swipe { width: min(340px, 90vw); margin-top: 24px; }
+.ds-track { position: relative; height: 68px; border-radius: 999px; padding: 5px; display: flex; align-items: center; overflow: hidden;
+  background: linear-gradient(90deg, rgba(242,138,69,.16), rgba(20,27,34,.92)); border: 1.5px solid rgba(242,138,69,.65);
+  box-shadow: 0 0 24px rgba(242,138,69,.15), inset 0 0 14px rgba(0,0,0,.6); }
+.ds-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 64px; border-radius: 999px; pointer-events: none;
+  background: linear-gradient(90deg, rgba(242,138,69,.35), rgba(242,138,69,.1)); }
+.ds-knob { position: relative; z-index: 2; width: 56px; height: 56px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: grab;
+  touch-action: none; will-change: transform; background: radial-gradient(circle at 30% 30%, #ff9d57, #e66e1e); box-shadow: 0 0 20px rgba(242,138,69,.45); }
+.ds-knob:active { cursor: grabbing; }
+.ds-knob:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.ds-knob.nudge { animation: dsNudge 2.6s cubic-bezier(.45,.05,.55,.95) infinite; }
+@keyframes dsNudge { 0%, 15% { transform: translateX(0); } 50% { transform: translateX(125px); } 85%, 100% { transform: translateX(0); } }
+
+/* sign-in */
+.ds-login { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 22px;
+  background: radial-gradient(circle at 50% 18%, rgba(242,138,69,.1) 0%, #080c10 60%); animation: dsIn .35s ease; }
+@keyframes dsIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ds-box { width: min(380px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.ds-input { width: 100%; height: 56px; border-radius: 14px; border: 1px solid #2b3744; background: #151e27; color: #f4f7fa; font: inherit; font-size: 16px;
+  text-align: center; padding: 0 18px; outline: none; transition: .18s; }
+.ds-input::placeholder { color: #9baab7; opacity: 1; }
+.ds-input:focus { border-color: #f28a45; background: #19242f; box-shadow: 0 0 0 3px rgba(242,138,69,.15); }
+.ds-login .btn.ds-submit { width: 100%; height: 58px; border-radius: 16px; background: #343f4b; color: #fff; font-size: 18px; font-weight: 800; margin-top: 6px; transition: .2s; }
+.ds-box:valid .btn.ds-submit, .ds-login .btn.ds-submit:hover { background: #f28a45; color: #17100b; }
+.ds-forgot { align-self: flex-end; margin-top: -6px; color: #25b8a6; font-size: 14px; font-weight: 700; }
+.ds-login .notice { width: min(380px, 100%); margin: 0 0 14px; }
+
+.ds-apply { width: min(560px, 100%); margin-top: 34px; border: 1px solid #293642; border-radius: 16px; background: #131b23; }
+.ds-apply summary { cursor: pointer; padding: 16px 18px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.ds-apply summary::-webkit-details-marker { display: none; }
+.ds-apply summary::after { content: "＋"; color: #f28a45; font-size: 20px; }
+.ds-apply[open] summary::after { content: "－"; }
+.ds-apply form { padding: 0 18px 18px; }
+.ds-apply p { color: #9baab7; margin: 0 0 10px; font-size: 14px; }
+.ds-apply .field { color: #c3cdd5; }
+.ds-apply .field input, .ds-apply .field select { background: #0c1319; border-color: #34414d; color: #f4f7fa; }
+.ds-apply .check { color: #c3cdd5; }
+.ds-apply .btn-gold { background: #f28a45; color: #17110d; }
+.ds-back { margin-top: 26px; color: #9baab7; font-size: 14px; }
+.ds-back:hover { color: #fff; }
